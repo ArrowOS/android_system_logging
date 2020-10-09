@@ -692,14 +692,10 @@ uint32_t LogTags::nameToTag(uid_t uid, const char* name, const char* format) {
         Tag = nameToTag_locked(Name, format, unique);
         if (updateUid && (Tag != emptyTag) && !unique) {
             tag2uid_const_iterator ut = tag2uid.find(Tag);
-            if (updateUid) {
-                if ((ut != tag2uid.end()) &&
-                    (ut->second.find(uid) == ut->second.end())) {
-                    unique = write;  // write passthrough to update uid counts
-                    if (!write) Tag = emptyTag;  // deny read access
-                }
-            } else {
-                unique = write && (ut != tag2uid.end());
+            if ((ut != tag2uid.end()) &&
+                (ut->second.find(uid) == ut->second.end())) {
+                unique = write;  // write passthrough to update uid counts
+                if (!write) Tag = emptyTag;  // deny read access
             }
         }
     }
