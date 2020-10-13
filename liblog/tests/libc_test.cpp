@@ -43,7 +43,7 @@ TEST(libc, __pstore_append) {
             "Kernel does not have space allocated to pmsg pstore driver "
             "configured\n");
   }
-  if (!fcloseReturn && !fcloseErrno && !fflushReturn && !fflushReturn) {
+  if (!fcloseReturn && !fcloseErrno && !fflushReturn && !fflushErrno) {
     fprintf(stderr,
             "Reboot, ensure string libc.__pstore_append is in "
             "/sys/fs/pstore/pmsg-ramoops-0\n");
