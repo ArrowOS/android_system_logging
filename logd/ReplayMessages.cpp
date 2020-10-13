@@ -387,6 +387,23 @@ class PrintAllLogs : public SingleBufferOperation {
         // the incoming log rate.
         usleep(100);
     }
+
+    void End() override {
+        // Release the reader thread.
+        {
+            auto lock = std::lock_guard{logd_lock};
+            reader_list_.reader_threads().back()->Release();
+        }
+
+        // Wait until it has deleted itself.
+        while (true) {
+            usleep(500);
+            auto lock = std::lock_guard{logd_lock};
+            if (reader_list_.reader_threads().size() == 0) {
+                break;
+            }
+        }
+    }
 };
 
 int main(int argc, char** argv) {
