@@ -161,7 +161,7 @@ static void do_log_line(struct log_info* log_info, const char* line) {
     if (log_info->log_target & LOG_ALOG) {
         ALOG(LOG_INFO, log_info->btag, "%s", line);
     }
-    if (log_info->log_target & LOG_FILE) {
+    if (log_info->fp) {
         fprintf(log_info->fp, "%s\n", line);
     }
 }
@@ -338,7 +338,7 @@ static int parent(const char* tag, int parent_read, pid_t pid, int* chld_sts, in
     int rc = 0;
     int fd;
 
-    struct log_info log_info;
+    struct log_info log_info = {};
 
     int a = 0;  // start index of unprocessed data
     int b = 0;  // end index of unprocessed data
@@ -510,8 +510,8 @@ static int parent(const char* tag, int parent_read, pid_t pid, int* chld_sts, in
 
 err_waitpid:
 err_poll:
-    if (log_target & LOG_FILE) {
-        fclose(log_info.fp); /* Also closes underlying fd */
+    if (log_info.fp) {
+        fclose(log_info.fp);
     }
     if (abbreviated) {
         free_abbr_buf(&log_info.a_buf);
