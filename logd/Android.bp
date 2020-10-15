@@ -91,6 +91,7 @@ cc_binary {
         "LogAudit.cpp",
         "LogKlog.cpp",
         "libaudit.cpp",
+        "PkgIds.cpp",
     ],
 
     static_libs: [
