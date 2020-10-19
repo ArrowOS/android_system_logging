@@ -79,11 +79,6 @@ static void DropPrivs(bool klogd, bool auditd) {
         PLOG(FATAL) << "failed to set background scheduling policy";
     }
 
-    sched_param param = {};
-    if (sched_setscheduler((pid_t)0, SCHED_BATCH, &param) < 0) {
-        PLOG(FATAL) << "failed to set batch scheduler";
-    }
-
     if (!GetBoolProperty("ro.debuggable", false)) {
         if (prctl(PR_SET_DUMPABLE, 0) == -1) {
             PLOG(FATAL) << "failed to clear PR_SET_DUMPABLE";
