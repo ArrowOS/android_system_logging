@@ -69,6 +69,7 @@ cc_library {
     ramdisk_available: true,
     recovery_available: true,
     native_bridge_supported: true,
+    llndk_stubs: "liblog.llndk",
     srcs: liblog_sources,
 
     target: {
@@ -149,7 +150,7 @@ ndk_library {
 }
 
 llndk_library {
-    name: "liblog",
+    name: "liblog.llndk",
     native_bridge_supported: true,
     symbol_file: "liblog.map.txt",
     export_include_dirs: ["include_vndk"],
