@@ -594,8 +594,8 @@ static void BM_log_event_overhead_42(benchmark::State& state) {
     // In system/core/logcat/event.logtags:
     // # These are used for testing, do not modify without updating
     // # tests/framework-tests/src/android/util/EventLogFunctionalTest.java.
-    // # system/core/liblog/tests/liblog_benchmark.cpp
-    // # system/core/liblog/tests/liblog_test.cpp
+    // # system/logging/liblog/tests/liblog_benchmark.cpp
+    // # system/logging/liblog/tests/liblog_test.cpp
     // 42    answer (to life the universe etc|3)
     __android_log_btwrite(42, EVENT_TYPE_LONG, &i, sizeof(i));
     state.PauseTiming();
