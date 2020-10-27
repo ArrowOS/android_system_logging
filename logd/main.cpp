@@ -43,7 +43,6 @@
 #include <cutils/android_get_control_file.h>
 #include <cutils/sockets.h>
 #include <log/event_tag_map.h>
-#include <packagelistparser/packagelistparser.h>
 #include <private/android_filesystem_config.h>
 #include <private/android_logger.h>
 #include <processgroup/sched_policy.h>
@@ -114,32 +113,6 @@ static bool GetBoolPropertyEngSvelteDefault(const std::string& name) {
             GetBoolProperty("ro.debuggable", false) && !GetBoolProperty("ro.config.low_ram", false);
 
     return GetBoolProperty(name, default_value);
-}
-
-char* android::uidToName(uid_t u) {
-    struct Userdata {
-        uid_t uid;
-        char* name;
-    } userdata = {
-            .uid = u,
-            .name = nullptr,
-    };
-
-    packagelist_parse(
-            [](pkg_info* info, void* callback_parameter) {
-                auto userdata = reinterpret_cast<Userdata*>(callback_parameter);
-                bool result = true;
-                if (info->uid == userdata->uid) {
-                    userdata->name = strdup(info->name);
-                    // false to stop processing
-                    result = false;
-                }
-                packagelist_free(info);
-                return result;
-            },
-            &userdata);
-
-    return userdata.name;
 }
 
 static void readDmesg(LogAudit* al, LogKlog* kl) {
