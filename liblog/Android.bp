@@ -68,6 +68,7 @@ cc_library {
     name: "liblog",
     host_supported: true,
     ramdisk_available: true,
+    vendor_ramdisk_available: true,
     recovery_available: true,
     native_bridge_supported: true,
     llndk_stubs: "liblog.llndk",
