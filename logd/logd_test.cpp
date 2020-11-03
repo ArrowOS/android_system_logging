@@ -843,9 +843,9 @@ TEST(logd, getEventTag_newentry) {
 TEST(logd, no_epipe) {
 #ifdef __ANDROID__
     // Actually generating SIGPIPE in logd is racy, since we need to close the socket quicker than
-    // logd finishes writing the data to it, so we try 10 times, which should be enough to trigger
+    // logd finishes writing the data to it, so we try 5 times, which should be enough to trigger
     // SIGPIPE if logd isn't ignoring SIGPIPE
-    for (int i = 0; i < 10; ++i) {
+    for (int i = 0; i < 5; ++i) {
         unique_fd sock1(
                 socket_local_client("logd", ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_STREAM));
         ASSERT_GT(sock1, 0);
@@ -861,7 +861,7 @@ TEST(logd, no_epipe) {
 
         struct pollfd p = {.fd = sock2, .events = POLLIN, .revents = 0};
 
-        int ret = poll(&p, 1, 20);
+        int ret = poll(&p, 1, 1000);
         EXPECT_EQ(ret, 1);
         EXPECT_TRUE(p.revents & POLLIN);
         EXPECT_FALSE(p.revents & POLL_ERR);
