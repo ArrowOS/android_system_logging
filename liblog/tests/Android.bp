@@ -99,6 +99,7 @@ cc_test {
         "cts",
         "device-tests",
     ],
+    test_config: "device_test_config.xml",
 }
 
 cc_test_host {
@@ -111,4 +112,7 @@ cc_test_host {
         "liblog_global_state.cpp",
     ],
     isolated: true,
+    test_suites: [
+        "general-tests",
+    ],
 }
