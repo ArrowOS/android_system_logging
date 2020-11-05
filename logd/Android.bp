@@ -173,6 +173,9 @@ cc_test {
     name: "logd-unit-tests",
     host_supported: true,
     defaults: ["logd-unit-test-defaults"],
+    test_suites: [
+        "general-tests",
+    ],
 }
 
 cc_test {
@@ -190,6 +193,7 @@ cc_test {
         "cts",
         "device-tests",
     ],
+    test_config: "device_test_config.xml",
 }
 
 cc_binary {
