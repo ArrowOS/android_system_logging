@@ -18,11 +18,16 @@
 
 #include <sys/types.h>
 
+#include <vector>
+
 #include <android-base/logging.h>
 
 #include "LogWriter.h"
+#include "LogdLock.h"
 #include "SerializedData.h"
 #include "SerializedLogEntry.h"
+
+class SerializedFlushToState;
 
 class SerializedLogChunk {
   public:
@@ -33,6 +38,10 @@ class SerializedLogChunk {
     void Compress();
     void IncReaderRefCount();
     void DecReaderRefCount();
+    void AttachReader(SerializedFlushToState* reader);
+    void DetachReader(SerializedFlushToState* reader);
+
+    void NotifyReadersOfPrune(log_id_t log_id) REQUIRES(logd_lock);
 
     // Must have no readers referencing this.  Return true if there are no logs left in this chunk.
     bool ClearUidLogs(uid_t uid, log_id_t log_id, LogStatistics* stats);
@@ -76,4 +85,5 @@ class SerializedLogChunk {
     bool writer_active_ = true;
     uint64_t highest_sequence_number_ = 1;
     SerializedData compressed_log_;
+    std::vector<SerializedFlushToState*> readers_;
 };
