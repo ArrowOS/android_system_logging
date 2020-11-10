@@ -34,7 +34,7 @@ SerializedFlushToState::SerializedFlushToState(uint64_t start, LogMask log_mask,
 SerializedFlushToState::~SerializedFlushToState() {
     log_id_for_each(i) {
         if (log_positions_[i]) {
-            log_positions_[i]->buffer_it->DecReaderRefCount();
+            log_positions_[i]->buffer_it->DetachReader(this);
         }
     }
 }
@@ -49,7 +49,7 @@ void SerializedFlushToState::CreateLogPosition(log_id_t log_id) {
     if (it == logs_[log_id].end()) {
         --it;
     }
-    it->IncReaderRefCount();
+    it->AttachReader(this);
     log_position.buffer_it = it;
 
     // Find the offset of the first log with sequence number >= start().
@@ -80,9 +80,9 @@ void SerializedFlushToState::UpdateLogsNeeded(log_id_t log_id) {
             logs_needed_from_next_position_[log_id] = true;
         } else {
             // Otherwise, if there is another buffer piece, move to that and do the same check.
-            buffer_it->DecReaderRefCount();
+            buffer_it->DetachReader(this);
             ++buffer_it;
-            buffer_it->IncReaderRefCount();
+            buffer_it->AttachReader(this);
             log_positions_[log_id]->read_offset = 0;
             if (buffer_it->write_offset() == 0) {
                 logs_needed_from_next_position_[log_id] = true;
@@ -145,15 +145,11 @@ LogWithId SerializedFlushToState::PopNextUnreadLog() {
     return {log_id, entry};
 }
 
-void SerializedFlushToState::Prune(log_id_t log_id,
-                                   const std::list<SerializedLogChunk>::iterator& buffer_it) {
-    // If we don't have a position for this log or if we're not referencing buffer_it, ignore.
-    if (!log_positions_[log_id].has_value() || log_positions_[log_id]->buffer_it != buffer_it) {
-        return;
-    }
+void SerializedFlushToState::Prune(log_id_t log_id) {
+    CHECK(log_positions_[log_id].has_value());
 
     // Decrease the ref count since we're deleting our reference.
-    buffer_it->DecReaderRefCount();
+    log_positions_[log_id]->buffer_it->DetachReader(this);
 
     // Delete in the reference.
     log_positions_[log_id].reset();
