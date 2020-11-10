@@ -19,6 +19,7 @@
 #include <android-base/logging.h>
 
 #include "CompressionEngine.h"
+#include "SerializedFlushToState.h"
 
 SerializedLogChunk::~SerializedLogChunk() {
     CHECK_EQ(reader_ref_count_, 0U);
@@ -49,6 +50,26 @@ void SerializedLogChunk::DecReaderRefCount() {
     }
     if (!writer_active_) {
         contents_.Resize(0);
+    }
+}
+
+void SerializedLogChunk::AttachReader(SerializedFlushToState* reader) {
+    readers_.emplace_back(reader);
+    IncReaderRefCount();
+}
+
+void SerializedLogChunk::DetachReader(SerializedFlushToState* reader) {
+    auto it = std::find(readers_.begin(), readers_.end(), reader);
+    CHECK(readers_.end() != it);
+    readers_.erase(it);
+    DecReaderRefCount();
+}
+
+void SerializedLogChunk::NotifyReadersOfPrune(log_id_t log_id) {
+    // Readers will call DetachReader() in their Prune() call, so we make a copy of the list first.
+    auto readers = readers_;
+    for (auto& reader : readers) {
+        reader->Prune(log_id);
     }
 }
 

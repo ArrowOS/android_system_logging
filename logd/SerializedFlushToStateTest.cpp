@@ -306,5 +306,5 @@ TEST(SerializedFlushToState, Prune) {
     auto state = SerializedFlushToState{1, kLogMaskAll, log_chunks};
     ASSERT_TRUE(state.HasUnreadLogs());
 
-    state.Prune(LOG_ID_MAIN, log_chunks[LOG_ID_MAIN].begin());
+    state.Prune(LOG_ID_MAIN);
 }

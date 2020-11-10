@@ -61,8 +61,7 @@ class SerializedFlushToState : public FlushToState {
 
     // If the parent log buffer prunes logs, the reference that this class contains may become
     // invalid, so this must be called first to drop the reference to buffer_it, if any.
-    void Prune(log_id_t log_id, const std::list<SerializedLogChunk>::iterator& buffer_it)
-            REQUIRES(logd_lock);
+    void Prune(log_id_t log_id) REQUIRES(logd_lock);
 
   private:
     // Set logs_needed_from_next_position_[i] to indicate if log_positions_[i] points to an unread
