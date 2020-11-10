@@ -71,6 +71,4 @@ class SerializedLogBuffer final : public LogBuffer {
     std::list<SerializedLogChunk> logs_[LOG_ID_MAX] GUARDED_BY(logd_lock);
 
     std::atomic<uint64_t> sequence_ = 1;
-
-    std::atomic<bool> pending_write_ = false;
 };
