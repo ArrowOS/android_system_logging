@@ -86,30 +86,24 @@ int SerializedLogBuffer::Log(log_id_t log_id, log_time realtime, uid_t uid, pid_
 
     auto sequence = sequence_.fetch_add(1, std::memory_order_relaxed);
 
-    pending_write_ = true;
-    {
-        auto lock = std::lock_guard{logd_lock};
+    auto lock = std::lock_guard{logd_lock};
 
-        if (logs_[log_id].empty()) {
-            logs_[log_id].push_back(SerializedLogChunk(max_size_[log_id] / 4));
-        }
-
-        auto total_len = sizeof(SerializedLogEntry) + len;
-        if (!logs_[log_id].back().CanLog(total_len)) {
-            logs_[log_id].back().FinishWriting();
-            logs_[log_id].push_back(SerializedLogChunk(max_size_[log_id] / 4));
-        }
-
-        auto entry = logs_[log_id].back().Log(sequence, realtime, uid, pid, tid, msg, len);
-        stats_->Add(entry->ToLogStatisticsElement(log_id));
-
-        MaybePrune(log_id);
-
-        reader_list_->NotifyNewLog(1 << log_id);
+    if (logs_[log_id].empty()) {
+        logs_[log_id].push_back(SerializedLogChunk(max_size_[log_id] / 4));
     }
-    pending_write_ = false;
-    FutexWake(&pending_write_);
 
+    auto total_len = sizeof(SerializedLogEntry) + len;
+    if (!logs_[log_id].back().CanLog(total_len)) {
+        logs_[log_id].back().FinishWriting();
+        logs_[log_id].push_back(SerializedLogChunk(max_size_[log_id] / 4));
+    }
+
+    auto entry = logs_[log_id].back().Log(sequence, realtime, uid, pid, tid, msg, len);
+    stats_->Add(entry->ToLogStatisticsElement(log_id));
+
+    MaybePrune(log_id);
+
+    reader_list_->NotifyNewLog(1 << log_id);
     return len;
 }
 
@@ -211,16 +205,7 @@ bool SerializedLogBuffer::FlushTo(
                                          log_time realtime)>& filter) {
     auto& state = reinterpret_cast<SerializedFlushToState&>(abstract_state);
 
-    while (true) {
-        if (pending_write_) {
-            logd_lock.unlock();
-            FutexWait(&pending_write_, true);
-            logd_lock.lock();
-        }
-
-        if (!state.HasUnreadLogs()) {
-            break;
-        }
+    while (state.HasUnreadLogs()) {
         LogWithId top = state.PopNextUnreadLog();
         auto* entry = top.entry;
         auto log_id = top.log_id;
