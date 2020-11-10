@@ -131,14 +131,6 @@ void SerializedLogBuffer::RemoveChunkFromStats(log_id_t log_id, SerializedLogChu
     chunk.DecReaderRefCount();
 }
 
-void SerializedLogBuffer::NotifyReadersOfPrune(
-        log_id_t log_id, const std::list<SerializedLogChunk>::iterator& chunk) {
-    for (const auto& reader_thread : reader_list_->reader_threads()) {
-        auto& state = reinterpret_cast<SerializedFlushToState&>(reader_thread->flush_to_state());
-        state.Prune(log_id, chunk);
-    }
-}
-
 void SerializedLogBuffer::Prune(log_id_t log_id, size_t bytes_to_free, uid_t uid) {
     auto& log_buffer = logs_[log_id];
     auto it = log_buffer.begin();
@@ -174,7 +166,7 @@ void SerializedLogBuffer::Prune(log_id_t log_id, size_t bytes_to_free, uid_t uid
 
         // Readers may have a reference to the chunk to track their last read log_position.
         // Notify them to delete the reference.
-        NotifyReadersOfPrune(log_id, it_to_prune);
+        it_to_prune->NotifyReadersOfPrune(log_id);
 
         if (uid != 0) {
             // Reorder the log buffer to remove logs from the given UID.  If there are no logs left
