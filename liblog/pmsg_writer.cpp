@@ -31,24 +31,32 @@
 
 static atomic_int pmsg_fd;
 
-// pmsg_fd should only beopened once.  If we see that pmsg_fd is uninitialized, we open "/dev/pmsg0"
-// then attempt to compare/exchange it into pmsg_fd.  If the compare/exchange was successful, then
-// that will be the fd used for the duration of the program, otherwise a different thread has
-// already opened and written the fd to the atomic, so close the new fd and return.
 static void GetPmsgFd() {
+  // Note if open() fails and returns -1, that value is stored into pmsg_fd as an indication that
+  // pmsg is not available and open() should not be retried.
   if (pmsg_fd != 0) {
     return;
   }
 
   int new_fd = TEMP_FAILURE_RETRY(open("/dev/pmsg0", O_WRONLY | O_CLOEXEC));
-  if (new_fd <= 0) {
-    return;
+
+  // Unlikely that new_fd is 0, but that is synonymous with our uninitialized value, and we'd prefer
+  // STDIN_FILENO != stdin, so we call open() to get a new fd value in this case.
+  if (new_fd == 0) {
+    new_fd = TEMP_FAILURE_RETRY(open("/dev/pmsg0", O_WRONLY | O_CLOEXEC));
+    close(0);
   }
 
+  // pmsg_fd should only be opened once.  If we see that pmsg_fd is uninitialized, we open
+  // "/dev/pmsg0" then attempt to compare/exchange it into pmsg_fd.  If the compare/exchange was
+  // successful, then that will be the fd used for the duration of the program, otherwise a
+  // different thread has already opened and written the fd to the atomic, so close the new fd and
+  // return.
   int uninitialized_value = 0;
   if (!pmsg_fd.compare_exchange_strong(uninitialized_value, new_fd)) {
-    close(new_fd);
-    return;
+    if (new_fd != -1) {
+      close(new_fd);
+    }
   }
 }
 
