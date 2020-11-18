@@ -81,8 +81,10 @@ class LogBufferTest : public testing::TestWithParam<std::string> {
 
     void LogMessages(const std::vector<LogMessage>& messages) {
         for (auto& [entry, message, _] : messages) {
-            log_buffer_->Log(static_cast<log_id_t>(entry.lid), log_time(entry.sec, entry.nsec),
-                             entry.uid, entry.pid, entry.tid, message.c_str(), message.size());
+            EXPECT_GT(log_buffer_->Log(static_cast<log_id_t>(entry.lid),
+                                       log_time(entry.sec, entry.nsec), entry.uid, entry.pid,
+                                       entry.tid, message.c_str(), message.size()),
+                      0);
         }
     }
 
