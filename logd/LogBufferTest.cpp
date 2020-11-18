@@ -18,6 +18,7 @@
 
 #include <unistd.h>
 
+#include <chrono>
 #include <limits>
 #include <memory>
 #include <regex>
@@ -33,6 +34,7 @@
 using android::base::Join;
 using android::base::Split;
 using android::base::StringPrintf;
+using namespace std::chrono_literals;
 
 char* android::uidToName(uid_t) {
     return nullptr;
@@ -452,6 +454,237 @@ TEST_P(LogBufferTest, clear_logs) {
         EXPECT_EQ(7ULL, flush_to_state->start());
     }
     CompareLogMessages(after_clear_messages, read_log_messages_after_clear);
+}
+
+TEST_P(LogBufferTest, tail100_nonblocking_1000total) {
+    LogMessage message = {
+            {.pid = 1, .tid = 2, .sec = 0, .nsec = 20001, .lid = LOG_ID_MAIN, .uid = 0}, "message"};
+    std::vector<LogMessage> log_messages;
+    for (int i = 0; i < 1000; ++i) {
+        log_messages.push_back(message);
+        log_messages.back().entry.sec = i;
+        log_messages.back().entry.pid = i;  // Chatty dedupes these messages if they're identical.
+    }
+    FixupMessages(&log_messages);
+    LogMessages(log_messages);
+
+    std::vector<LogMessage> read_log_messages;
+    bool released = false;
+
+    constexpr int kTailCount = 100;
+    {
+        auto lock = std::lock_guard{logd_lock};
+        std::unique_ptr<LogWriter> test_writer(new TestWriter(&read_log_messages, &released));
+        std::unique_ptr<LogReaderThread> log_reader(
+                new LogReaderThread(log_buffer_.get(), &reader_list_, std::move(test_writer), true,
+                                    kTailCount, kLogMaskAll, 0, {}, 1, {}));
+        reader_list_.reader_threads().emplace_back(std::move(log_reader));
+    }
+
+    while (!released) {
+        usleep(5000);
+    }
+    {
+        auto lock = std::lock_guard{logd_lock};
+        EXPECT_EQ(0U, reader_list_.reader_threads().size());
+    }
+    std::vector<LogMessage> expected_log_messages{log_messages.end() - kTailCount,
+                                                  log_messages.end()};
+    CompareLogMessages(expected_log_messages, read_log_messages);
+}
+
+TEST_P(LogBufferTest, tail100_blocking_1000total_then1000more) {
+    LogMessage message = {
+            {.pid = 1, .tid = 2, .sec = 0, .nsec = 20001, .lid = LOG_ID_MAIN, .uid = 0}, "message"};
+    std::vector<LogMessage> log_messages;
+    for (int i = 0; i < 1000; ++i) {
+        log_messages.push_back(message);
+        log_messages.back().entry.sec = i;
+        log_messages.back().entry.pid = i;  // Chatty dedupes these messages if they're identical.
+    }
+    FixupMessages(&log_messages);
+    LogMessages(log_messages);
+
+    std::vector<LogMessage> read_log_messages;
+    bool released = false;
+
+    constexpr int kTailCount = 100;
+    {
+        auto lock = std::lock_guard{logd_lock};
+        std::unique_ptr<LogWriter> test_writer(new TestWriter(&read_log_messages, &released));
+        std::unique_ptr<LogReaderThread> log_reader(
+                new LogReaderThread(log_buffer_.get(), &reader_list_, std::move(test_writer), false,
+                                    kTailCount, kLogMaskAll, 0, {}, 1, {}));
+        reader_list_.reader_threads().emplace_back(std::move(log_reader));
+    }
+
+    std::vector<LogMessage> expected_log_messages{log_messages.end() - kTailCount,
+                                                  log_messages.end()};
+
+    // Wait for the reader to have read the messages.
+    int retry_count = 1s / 5000us;
+    while (retry_count--) {
+        usleep(5000);
+        auto lock = std::lock_guard{logd_lock};
+        if (read_log_messages.size() == expected_log_messages.size()) {
+            CompareLogMessages(expected_log_messages, read_log_messages);
+            break;
+        }
+    }
+    ASSERT_GT(retry_count, 0);
+
+    // Log more messages
+    for (auto& message : log_messages) {
+        message.entry.sec += 10000;
+    }
+    FixupMessages(&log_messages);
+    LogMessages(log_messages);
+    expected_log_messages.insert(expected_log_messages.end(), log_messages.begin(),
+                                 log_messages.end());
+
+    // Wait for the reader to have read the new messages.
+    retry_count = 1s / 5000us;
+    while (retry_count--) {
+        usleep(5000);
+        auto lock = std::lock_guard{logd_lock};
+        if (read_log_messages.size() == expected_log_messages.size()) {
+            CompareLogMessages(expected_log_messages, read_log_messages);
+            break;
+        }
+    }
+    ASSERT_GT(retry_count, 0);
+
+    // Release the reader.
+    {
+        auto lock = std::lock_guard{logd_lock};
+        reader_list_.reader_threads().back()->Release();
+    }
+
+    // Confirm that it has exited.
+    while (!released) {
+        usleep(5000);
+    }
+    {
+        auto lock = std::lock_guard{logd_lock};
+        EXPECT_EQ(0U, reader_list_.reader_threads().size());
+    }
+
+    // Final check that no extraneous logs were logged.
+    CompareLogMessages(expected_log_messages, read_log_messages);
+}
+
+TEST_P(LogBufferTest, tail100_nonblocking_50total) {
+    LogMessage message = {
+            {.pid = 1, .tid = 2, .sec = 0, .nsec = 20001, .lid = LOG_ID_MAIN, .uid = 0}, "message"};
+    std::vector<LogMessage> log_messages;
+    for (int i = 0; i < 50; ++i) {
+        log_messages.push_back(message);
+        log_messages.back().entry.sec = i;
+        log_messages.back().entry.pid = i;  // Chatty dedupes these messages if they're identical.
+    }
+    FixupMessages(&log_messages);
+    LogMessages(log_messages);
+
+    std::vector<LogMessage> read_log_messages;
+    bool released = false;
+
+    constexpr int kTailCount = 100;
+    {
+        auto lock = std::lock_guard{logd_lock};
+        std::unique_ptr<LogWriter> test_writer(new TestWriter(&read_log_messages, &released));
+        std::unique_ptr<LogReaderThread> log_reader(
+                new LogReaderThread(log_buffer_.get(), &reader_list_, std::move(test_writer), true,
+                                    kTailCount, kLogMaskAll, 0, {}, 1, {}));
+        reader_list_.reader_threads().emplace_back(std::move(log_reader));
+    }
+
+    while (!released) {
+        usleep(5000);
+    }
+    {
+        auto lock = std::lock_guard{logd_lock};
+        EXPECT_EQ(0U, reader_list_.reader_threads().size());
+    }
+    CompareLogMessages(log_messages, read_log_messages);
+}
+
+TEST_P(LogBufferTest, tail100_blocking_50total_then1000more) {
+    LogMessage message = {
+            {.pid = 1, .tid = 2, .sec = 0, .nsec = 20001, .lid = LOG_ID_MAIN, .uid = 0}, "message"};
+    std::vector<LogMessage> log_messages;
+    for (int i = 0; i < 50; ++i) {
+        log_messages.push_back(message);
+        log_messages.back().entry.sec = i;
+        log_messages.back().entry.pid = i;  // Chatty dedupes these messages if they're identical.
+    }
+    FixupMessages(&log_messages);
+    LogMessages(log_messages);
+
+    std::vector<LogMessage> read_log_messages;
+    bool released = false;
+
+    constexpr int kTailCount = 100;
+    {
+        auto lock = std::lock_guard{logd_lock};
+        std::unique_ptr<LogWriter> test_writer(new TestWriter(&read_log_messages, &released));
+        std::unique_ptr<LogReaderThread> log_reader(
+                new LogReaderThread(log_buffer_.get(), &reader_list_, std::move(test_writer), false,
+                                    kTailCount, kLogMaskAll, 0, {}, 1, {}));
+        reader_list_.reader_threads().emplace_back(std::move(log_reader));
+    }
+
+    std::vector<LogMessage> expected_log_messages = log_messages;
+
+    // Wait for the reader to have read the messages.
+    int retry_count = 1s / 5000us;
+    while (retry_count--) {
+        usleep(5000);
+        auto lock = std::lock_guard{logd_lock};
+        if (read_log_messages.size() == expected_log_messages.size()) {
+            CompareLogMessages(expected_log_messages, read_log_messages);
+            break;
+        }
+    }
+    ASSERT_GT(retry_count, 0);
+
+    // Log more messages
+    for (auto& message : log_messages) {
+        message.entry.sec += 10000;
+    }
+    FixupMessages(&log_messages);
+    LogMessages(log_messages);
+    expected_log_messages.insert(expected_log_messages.end(), log_messages.begin(),
+                                 log_messages.end());
+
+    // Wait for the reader to have read the new messages.
+    retry_count = 1s / 5000us;
+    while (retry_count--) {
+        usleep(5000);
+        auto lock = std::lock_guard{logd_lock};
+        if (read_log_messages.size() == expected_log_messages.size()) {
+            CompareLogMessages(expected_log_messages, read_log_messages);
+            break;
+        }
+    }
+    ASSERT_GT(retry_count, 0);
+
+    // Release the reader.
+    {
+        auto lock = std::lock_guard{logd_lock};
+        reader_list_.reader_threads().back()->Release();
+    }
+
+    // Confirm that it has exited.
+    while (!released) {
+        usleep(5000);
+    }
+    {
+        auto lock = std::lock_guard{logd_lock};
+        EXPECT_EQ(0U, reader_list_.reader_threads().size());
+    }
+
+    // Final check that no extraneous logs were logged.
+    CompareLogMessages(expected_log_messages, read_log_messages);
 }
 
 INSTANTIATE_TEST_CASE_P(LogBufferTests, LogBufferTest,
