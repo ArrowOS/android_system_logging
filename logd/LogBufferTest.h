@@ -16,18 +16,22 @@
 
 #pragma once
 
+#include <chrono>
 #include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 
 #include "ChattyLogBuffer.h"
+#include "LogBuffer.h"
 #include "LogReaderList.h"
 #include "LogStatistics.h"
 #include "LogTags.h"
 #include "PruneList.h"
 #include "SerializedLogBuffer.h"
 #include "SimpleLogBuffer.h"
+
+using namespace std::chrono_literals;
 
 struct LogMessage {
     logger_entry entry;
@@ -86,6 +90,88 @@ class LogBufferTest : public testing::TestWithParam<std::string> {
                                        entry.tid, message.c_str(), message.size()),
                       0);
         }
+    }
+
+    struct FlushMessagesResult {
+        std::vector<LogMessage> messages;
+        uint64_t next_sequence;
+    };
+
+    FlushMessagesResult FlushMessages(uint64_t sequence = 1, LogMask log_mask = kLogMaskAll) {
+        std::vector<LogMessage> read_log_messages;
+        auto lock = std::lock_guard{logd_lock};
+        std::unique_ptr<LogWriter> test_writer(new TestWriter(&read_log_messages, nullptr));
+
+        auto flush_to_state = log_buffer_->CreateFlushToState(sequence, log_mask);
+        EXPECT_TRUE(log_buffer_->FlushTo(test_writer.get(), *flush_to_state, nullptr));
+        return {read_log_messages, flush_to_state->start()};
+    }
+
+    struct ReaderThreadParams {
+        bool non_block = true;
+        unsigned long tail = 0;
+        LogMask log_mask = kLogMaskAll;
+        pid_t pid = 0;
+        log_time start_time = {};
+        uint64_t sequence = 1;
+        std::chrono::steady_clock::time_point deadline = {};
+    };
+
+    class TestReaderThread {
+      public:
+        TestReaderThread(const ReaderThreadParams& params, LogBufferTest& test) : test_(test) {
+            auto lock = std::lock_guard{logd_lock};
+            std::unique_ptr<LogWriter> test_writer(new TestWriter(&read_log_messages_, &released_));
+            std::unique_ptr<LogReaderThread> log_reader(new LogReaderThread(
+                    test_.log_buffer_.get(), &test_.reader_list_, std::move(test_writer),
+                    params.non_block, params.tail, params.log_mask, params.pid, params.start_time,
+                    params.sequence, params.deadline));
+            test_.reader_list_.reader_threads().emplace_back(std::move(log_reader));
+        }
+
+        void WaitUntilReleased() {
+            while (!released_) {
+                usleep(5000);
+            }
+        }
+
+        std::vector<LogMessage> read_log_messages() const { return read_log_messages_; }
+
+        LogBufferTest& test_;
+        std::vector<LogMessage> read_log_messages_;
+        bool released_ = false;
+    };
+
+    std::vector<LogMessage> ReadLogMessagesNonBlockingThread(const ReaderThreadParams& params) {
+        EXPECT_TRUE(params.non_block)
+                << "params.non_block must be true for ReadLogMessagesNonBlockingThread()";
+
+        auto reader = TestReaderThread(params, *this);
+        reader.WaitUntilReleased();
+        auto lock = std::lock_guard{logd_lock};
+        EXPECT_EQ(0U, reader_list_.reader_threads().size());
+
+        return reader.read_log_messages();
+    }
+
+    void ReleaseAndJoinReaders() {
+        {
+            auto lock = std::lock_guard{logd_lock};
+            for (auto& reader : reader_list_.reader_threads()) {
+                reader->Release();
+            }
+        }
+
+        auto retries = 1s / 5000us;
+        while (retries--) {
+            usleep(5000);
+            auto lock = std::lock_guard{logd_lock};
+            if (reader_list_.reader_threads().size() == 0) {
+                return;
+            }
+        }
+
+        FAIL() << "ReleaseAndJoinReaders() timed out with reader threads still running";
     }
 
     LogReaderList reader_list_;
