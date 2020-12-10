@@ -32,6 +32,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
 #include <cutils/sockets.h>
+#include <gtest/gtest-death-test.h>
 #include <gtest/gtest.h>
 #include <log/log_read.h>
 #include <private/android_filesystem_config.h>
@@ -866,6 +867,42 @@ TEST(logd, no_epipe) {
         EXPECT_TRUE(p.revents & POLLIN);
         EXPECT_FALSE(p.revents & POLL_ERR);
     }
+#else
+    GTEST_LOG_(INFO) << "This test does nothing.\n";
+#endif
+}
+
+// Only AID_ROOT, AID_SYSTEM, and AID_LOG can set log sizes.  Ensure that a different user, AID_BIN,
+// cannot set the log size.
+TEST(logd, logging_permissions) {
+#ifdef __ANDROID__
+    if (getuid() != 0) {
+        GTEST_SKIP() << "This test requires root";
+    }
+
+    auto child_main = [] {
+        setgroups(0, nullptr);
+        setgid(AID_BIN);
+        setuid(AID_BIN);
+
+        std::unique_ptr<logger_list, decltype(&android_logger_list_free)> logger_list{
+                android_logger_list_alloc(0, 0, 0), &android_logger_list_free};
+        if (!logger_list) {
+            _exit(1);
+        }
+        auto logger = android_logger_open(logger_list.get(), LOG_ID_MAIN);
+        if (!logger) {
+            _exit(2);
+        }
+        // This line should fail, so if it returns 0, we exit with an error.
+        if (android_logger_set_log_size(logger, 2 * 1024 * 1024) == 0) {
+            _exit(3);
+        }
+        _exit(EXIT_SUCCESS);
+    };
+
+    ASSERT_EXIT(child_main(), testing::ExitedWithCode(0), "");
+
 #else
     GTEST_LOG_(INFO) << "This test does nothing.\n";
 #endif
