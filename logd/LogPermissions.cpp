@@ -20,21 +20,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+
+#include <vector>
 
 #include <private/android_filesystem_config.h>
-
-// gets a list of supplementary group IDs associated with
-// the socket peer.  This is implemented by opening
-// /proc/PID/status and look for the "Group:" line.
-//
-// This function introduces races especially since status
-// can change 'shape' while reading, the net result is err
-// on lack of permission.
-//
-// Race-free alternative is to introduce pairs of sockets
-// and threads for each command and reading, one each that
-// has open permissions, and one that has restricted
-// permissions.
 
 static bool groupIsLog(char* buf) {
     char* ptr;
@@ -53,12 +43,19 @@ static bool groupIsLog(char* buf) {
     return false;
 }
 
-bool clientHasLogCredentials(uid_t uid, gid_t gid, pid_t pid) {
-    if ((uid == AID_ROOT) || (uid == AID_SYSTEM) || (uid == AID_LOG)) {
-        return true;
-    }
+static bool UserIsPrivileged(int id) {
+    return id == AID_ROOT || id == AID_SYSTEM || id == AID_LOG;
+}
 
-    if ((gid == AID_ROOT) || (gid == AID_SYSTEM) || (gid == AID_LOG)) {
+// gets a list of supplementary group IDs associated with
+// the socket peer.  This is implemented by opening
+// /proc/PID/status and look for the "Group:" line.
+//
+// This function introduces races especially since status
+// can change 'shape' while reading, the net result is err
+// on lack of permission.
+bool clientHasLogCredentials(uid_t uid, gid_t gid, pid_t pid) {
+    if (UserIsPrivileged(uid) || UserIsPrivileged(gid)) {
         return true;
     }
 
@@ -73,8 +70,7 @@ bool clientHasLogCredentials(uid_t uid, gid_t gid, pid_t pid) {
 
     //
     // Reading /proc/<pid>/status is rife with race conditions. All of /proc
-    // suffers from this and its use should be minimized. However, we have no
-    // choice.
+    // suffers from this and its use should be minimized.
     //
     // Notably the content from one 4KB page to the next 4KB page can be from a
     // change in shape even if we are gracious enough to attempt to read
@@ -137,5 +133,42 @@ bool clientHasLogCredentials(uid_t uid, gid_t gid, pid_t pid) {
 }
 
 bool clientHasLogCredentials(SocketClient* cli) {
-    return clientHasLogCredentials(cli->getUid(), cli->getGid(), cli->getPid());
+    if (UserIsPrivileged(cli->getUid()) || UserIsPrivileged(cli->getGid())) {
+        return true;
+    }
+
+    // Kernel version 4.13 added SO_PEERGROUPS to return the supplemental groups of a peer socket,
+    // so try that first then fallback to the above racy checking of /proc/<pid>/status if the
+    // kernel is too old.  Per
+    // https://source.android.com/devices/architecture/kernel/android-common, the fallback can be
+    // removed no earlier than 2024.
+    auto supplemental_groups = std::vector<gid_t>(16, -1);
+    socklen_t groups_size = supplemental_groups.size() * sizeof(gid_t);
+
+    int result = getsockopt(cli->getSocket(), SOL_SOCKET, SO_PEERGROUPS, supplemental_groups.data(),
+                            &groups_size);
+
+    if (result != 0) {
+        if (errno != ERANGE) {
+            return clientHasLogCredentials(cli->getUid(), cli->getGid(), cli->getPid());
+        }
+
+        supplemental_groups.resize(groups_size / sizeof(gid_t), -1);
+        result = getsockopt(cli->getSocket(), SOL_SOCKET, SO_PEERGROUPS, supplemental_groups.data(),
+                            &groups_size);
+
+        // There is still some error after resizing supplemental_groups, fallback.
+        if (result != 0) {
+            return clientHasLogCredentials(cli->getUid(), cli->getGid(), cli->getPid());
+        }
+    }
+
+    supplemental_groups.resize(groups_size / sizeof(gid_t), -1);
+    for (const auto& gid : supplemental_groups) {
+        if (UserIsPrivileged(gid)) {
+            return true;
+        }
+    }
+
+    return false;
 }
