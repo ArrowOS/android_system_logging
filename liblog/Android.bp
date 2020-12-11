@@ -138,6 +138,10 @@ cc_library {
         "com.android.runtime",
         // DO NOT add more apex names here
     ],
+    pgo: {
+        sampling: true,
+        profile_file: "logging/liblog.profdata",
+    },
 }
 
 ndk_headers {
