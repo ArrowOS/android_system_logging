@@ -101,6 +101,7 @@ class Logcat {
     bool print_it_anyways_ = false;
 
     // For PrintDividers()
+    bool print_dividers_ = false;
     log_id_t last_printed_id_ = LOG_ID_MAX;
     bool printed_start_[LOG_ID_MAX] = {};
 
@@ -215,6 +216,8 @@ void Logcat::ProcessBuffer(struct log_msg* buf) {
 
         print_count_ += match;
         if (match || print_it_anyways_) {
+            PrintDividers(buf->id(), print_dividers_);
+
             bytesWritten = android_log_printLogLine(logformat_.get(), output_fd_.get(), &entry);
 
             if (bytesWritten < 0) {
@@ -231,7 +234,7 @@ void Logcat::ProcessBuffer(struct log_msg* buf) {
 }
 
 void Logcat::PrintDividers(log_id_t log_id, bool print_dividers) {
-    if (log_id == last_printed_id_ || print_binary_) {
+    if (log_id == last_printed_id_) {
         return;
     }
     if (!printed_start_[log_id] || print_dividers) {
@@ -530,7 +533,6 @@ int Logcat::Run(int argc, char** argv) {
     bool getLogSize = false;
     bool getPruneList = false;
     bool printStatistics = false;
-    bool printDividers = false;
     unsigned long setLogSize = 0;
     const char* setPruneList = nullptr;
     const char* setId = nullptr;
@@ -696,7 +698,7 @@ int Logcat::Run(int argc, char** argv) {
                 break;
 
             case 'D':
-                printDividers = true;
+                print_dividers_ = true;
                 break;
 
             case 'e':
@@ -1192,8 +1194,6 @@ If you have enabled significant logging, look into using the -G option to increa
         if (!uids.empty() && uids.count(log_msg.entry.uid) == 0) {
             continue;
         }
-
-        PrintDividers(log_msg.id(), printDividers);
 
         if (print_binary_) {
             if (!WriteFully(output_fd_, &log_msg, log_msg.len())) {
