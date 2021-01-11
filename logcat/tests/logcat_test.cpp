@@ -143,8 +143,8 @@ TEST(logcat, event_tag_filter) {
 
     pclose(fp);
 
-    // logcat, liblogcat and logcatd test instances result in the progression
-    // of 3, 6 and 9 for our counts as each round is performed.
+    // logcat and logcatd test instances result in the progression
+    // of 3, 6, and 9 for our counts as each round is performed.
     EXPECT_GE(count, 3);
     EXPECT_LE(count, 9);
     EXPECT_EQ(count % 3, 0);
@@ -1673,7 +1673,7 @@ TEST(logcat, help) {
     EXPECT_GT(logcatHelpTextSize, 4096UL);
     size_t logcatLastHelpTextSize =
         commandOutputSize(logcat_executable " -L -h 2>&1");
-#ifdef USING_LOGCAT_EXECUTABLE_DEFAULT  // logcat and liblogcat
+#ifdef USING_LOGCAT_EXECUTABLE_DEFAULT
     EXPECT_EQ(logcatHelpTextSize, logcatLastHelpTextSize);
 #else
     // logcatd -L -h prints the help twice, as designed.
