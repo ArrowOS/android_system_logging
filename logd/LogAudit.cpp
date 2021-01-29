@@ -40,6 +40,8 @@
 #include "LogUtils.h"
 #include "libaudit.h"
 
+using namespace std::string_literals;
+
 using android::base::GetBoolProperty;
 
 #define KMSG_PRIORITY(PRI)                               \
@@ -140,10 +142,10 @@ std::string LogAudit::denialParse(const std::string& denial, char terminator,
     return "";
 }
 
-void LogAudit::auditParse(const std::string& string, uid_t uid,
-                          std::string* bug_num) {
+std::string LogAudit::auditParse(const std::string& string, uid_t uid) {
     static std::map<std::string, std::string> denial_to_bug =
         populateDenialMap();
+    std::string result;
     std::string scontext = denialParse(string, ':', "scontext=u:object_r:");
     std::string tcontext = denialParse(string, ':', "tcontext=u:object_r:");
     std::string tclass = denialParse(string, ' ', "tclass=");
@@ -155,20 +157,18 @@ void LogAudit::auditParse(const std::string& string, uid_t uid,
     }
     auto search = denial_to_bug.find(scontext + tcontext + tclass);
     if (search != denial_to_bug.end()) {
-        bug_num->assign(" " + search->second);
-    } else {
-        bug_num->assign("");
+        result = " bug=" + search->second;
     }
 
     // Ensure the uid name is not null before passing it to the bug string.
     if (uid >= AID_APP_START && uid <= AID_APP_END) {
         char* uidname = android::uidToName(uid);
         if (uidname) {
-            bug_num->append(" app=");
-            bug_num->append(uidname);
+            result.append(" app="s + uidname);
             free(uidname);
         }
     }
+    return result;
 }
 
 int LogAudit::logPrint(const char* fmt, ...) {
@@ -222,7 +222,7 @@ int LogAudit::logPrint(const char* fmt, ...) {
         static const char log_warning[] = { KMSG_PRIORITY(LOG_WARNING) };
         static const char newline[] = "\n";
 
-        auditParse(str, uid, &denial_metadata);
+        denial_metadata = auditParse(str, uid);
         iov[0].iov_base = info ? const_cast<char*>(log_info) : const_cast<char*>(log_warning);
         iov[0].iov_len = info ? sizeof(log_info) : sizeof(log_warning);
         iov[1].iov_base = str;
@@ -256,7 +256,7 @@ int LogAudit::logPrint(const char* fmt, ...) {
 
     size_t str_len = strnlen(str, LOGGER_ENTRY_MAX_PAYLOAD);
     if (((fdDmesg < 0) || !initialized) && !hasMetadata(str, str_len))
-        auditParse(str, uid, &denial_metadata);
+        denial_metadata = auditParse(str, uid);
     str_len = (str_len + denial_metadata.length() <= LOGGER_ENTRY_MAX_PAYLOAD)
                   ? str_len + denial_metadata.length()
                   : LOGGER_ENTRY_MAX_PAYLOAD;
