@@ -401,6 +401,25 @@ pid_t LogKlog::sniffPid(const char*& buf, ssize_t len) {
         ++cp;
         --len;
     }
+    if (len > 8 && cp[0] == '[' && cp[7] == ']' && isdigit(cp[6])) {
+        // Linux 5.10 and above, e.g. "[    T1] init: init first stage started!"
+        int i = 5;
+        while (i > 1 && isdigit(cp[i])) {
+            --i;
+        }
+        int pos = i + 1;
+        if (cp[i] != 'T') {
+            return 0;
+        }
+        while (i > 1) {
+            --i;
+            if (cp[i] != ' ') {
+                return 0;
+            }
+        }
+        buf = cp + 8;
+        return atoi(cp + pos);
+    }
     return 0;
 }
 
