@@ -112,7 +112,4 @@ cc_test_host {
         "liblog_global_state.cpp",
     ],
     isolated: true,
-    test_suites: [
-        "general-tests",
-    ],
 }
