@@ -21,6 +21,10 @@
 //  event_flag += $(call event_logtags,logd)
 //  event_flag += $(call event_logtags,tag_def)
 // so make sure we do not regret hard-coding it as follows:
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
 event_flag = [
     "-DAUDITD_LOG_TAG=1003",
     "-DCHATTY_LOG_TAG=1004",
