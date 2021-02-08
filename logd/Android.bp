@@ -52,7 +52,6 @@ cc_defaults {
     sanitize: {
         cfi: true,
     },
-    cpp_std: "experimental",
 }
 
 cc_library_static {
