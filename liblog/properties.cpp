@@ -24,6 +24,8 @@
 
 #include <algorithm>
 
+#include <android-base/macros.h>
+
 #include <private/android_logger.h>
 
 #include "logger_write.h"
@@ -34,7 +36,7 @@
 
 static pthread_mutex_t lock_loggable = PTHREAD_MUTEX_INITIALIZER;
 
-static int lock() {
+static bool trylock() {
   /*
    * If we trigger a signal handler in the middle of locked activity and the
    * signal handler logs a message, we could get into a deadlock state.
@@ -44,7 +46,7 @@ static int lock() {
    * in less time than the system call associated with a mutex to deal with
    * the contention.
    */
-  return pthread_mutex_trylock(&lock_loggable);
+  return pthread_mutex_trylock(&lock_loggable) == 0;
 }
 
 static void unlock() {
@@ -93,22 +95,13 @@ static void refresh_cache(struct cache_char* cache, const char* key) {
   }
 }
 
-static int __android_log_level(const char* tag, size_t len) {
-  /* sizeof() is used on this array below */
-  static const char log_namespace[] = "persist.log.tag.";
-  static const size_t base_offset = 8; /* skip "persist." */
-
-  if (tag == nullptr || len == 0) {
+static int __android_log_level(const char* tag, size_t tag_len) {
+  if (tag == nullptr || tag_len == 0) {
     auto& tag_string = GetDefaultTag();
     tag = tag_string.c_str();
-    len = tag_string.size();
+    tag_len = tag_string.size();
   }
 
-  /* sizeof(log_namespace) = strlen(log_namespace) + 1 */
-  char key[sizeof(log_namespace) + len];
-  char* kp;
-  size_t i;
-  char c = 0;
   /*
    * Single layer cache of four properties. Priorities are:
    *    log.tag.<tag>
@@ -118,95 +111,73 @@ static int __android_log_level(const char* tag, size_t len) {
    * Where the missing tag matches all tags and becomes the
    * system global default. We do not support ro.log.tag* .
    */
-  static char* last_tag;
-  static size_t last_tag_len;
+  static std::string last_tag;
   static uint32_t global_serial;
-  /* some compilers erroneously see uninitialized use. !not_locked */
-  uint32_t current_global_serial = 0;
-  static struct cache_char tag_cache[2];
-  static struct cache_char global_cache[2];
-  int change_detected;
-  int global_change_detected;
-  int not_locked;
+  uint32_t current_global_serial;
+  static cache_char tag_cache[2];
+  static cache_char global_cache[2];
 
+  static const char* log_namespace = "persist.log.tag.";
+  char key[strlen(log_namespace) + tag_len + 1];
   strcpy(key, log_namespace);
 
-  global_change_detected = change_detected = not_locked = lock();
+  bool locked = trylock();
+  bool change_detected, global_change_detected;
+  global_change_detected = change_detected = !locked;
 
-  if (!not_locked) {
-    /*
-     *  check all known serial numbers to changes.
-     */
-    for (i = 0; i < (sizeof(tag_cache) / sizeof(tag_cache[0])); ++i) {
+  char c = 0;
+  if (locked) {
+    // Check all known serial numbers for changes.
+    for (size_t i = 0; i < arraysize(tag_cache); ++i) {
       if (check_cache(&tag_cache[i].cache)) {
-        change_detected = 1;
+        change_detected = true;
       }
     }
-    for (i = 0; i < (sizeof(global_cache) / sizeof(global_cache[0])); ++i) {
+    for (size_t i = 0; i < arraysize(global_cache); ++i) {
       if (check_cache(&global_cache[i].cache)) {
-        global_change_detected = 1;
+        global_change_detected = true;
       }
     }
 
     current_global_serial = __system_property_area_serial();
     if (current_global_serial != global_serial) {
-      change_detected = 1;
-      global_change_detected = 1;
+      global_change_detected = change_detected = true;
     }
   }
 
-  if (len) {
-    int local_change_detected = change_detected;
-    if (!not_locked) {
-      if (!last_tag || !last_tag[0] || (last_tag[0] != tag[0]) ||
-          strncmp(last_tag + 1, tag + 1, last_tag_len - 1)) {
-        /* invalidate log.tag.<tag> cache */
-        for (i = 0; i < (sizeof(tag_cache) / sizeof(tag_cache[0])); ++i) {
+  if (tag_len != 0) {
+    bool local_change_detected = change_detected;
+    if (locked) {
+      // compare() rather than == because tag isn't guaranteed 0-terminated.
+      if (last_tag.compare(0, last_tag.size(), tag, tag_len) != 0) {
+        // Invalidate log.tag.<tag> cache.
+        for (size_t i = 0; i < arraysize(tag_cache); ++i) {
           tag_cache[i].cache.pinfo = NULL;
           tag_cache[i].c = '\0';
         }
-        if (last_tag) last_tag[0] = '\0';
-        local_change_detected = 1;
-      }
-      if (!last_tag || !last_tag[0]) {
-        if (!last_tag) {
-          last_tag = static_cast<char*>(calloc(1, len + 1));
-          last_tag_len = 0;
-          if (last_tag) last_tag_len = len + 1;
-        } else if (len >= last_tag_len) {
-          last_tag = static_cast<char*>(realloc(last_tag, len + 1));
-          last_tag_len = 0;
-          if (last_tag) last_tag_len = len + 1;
-        }
-        if (last_tag) {
-          strncpy(last_tag, tag, len);
-          last_tag[len] = '\0';
-        }
+        last_tag.assign(tag, tag_len);
+        local_change_detected = true;
       }
     }
-    strncpy(key + sizeof(log_namespace) - 1, tag, len);
-    key[sizeof(log_namespace) - 1 + len] = '\0';
+    *stpncpy(key + strlen(log_namespace), tag, tag_len) = '\0';
 
-    kp = key;
-    for (i = 0; i < (sizeof(tag_cache) / sizeof(tag_cache[0])); ++i) {
-      struct cache_char* cache = &tag_cache[i];
-      struct cache_char temp_cache;
+    for (size_t i = 0; i < arraysize(tag_cache); ++i) {
+      cache_char* cache = &tag_cache[i];
+      cache_char temp_cache;
 
-      if (not_locked) {
+      if (!locked) {
         temp_cache.cache.pinfo = NULL;
         temp_cache.c = '\0';
         cache = &temp_cache;
       }
       if (local_change_detected) {
-        refresh_cache(cache, kp);
+        refresh_cache(cache, i == 0 ? key : key + strlen("persist."));
       }
 
       if (cache->c) {
         c = cache->c;
         break;
       }
-
-      kp = key + base_offset;
     }
   }
 
@@ -223,36 +194,33 @@ static int __android_log_level(const char* tag, size_t len) {
       break;
     default:
       /* clear '.' after log.tag */
-      key[sizeof(log_namespace) - 2] = '\0';
+      key[strlen(log_namespace) - 1] = '\0';
 
-      kp = key;
-      for (i = 0; i < (sizeof(global_cache) / sizeof(global_cache[0])); ++i) {
-        struct cache_char* cache = &global_cache[i];
-        struct cache_char temp_cache;
+      for (size_t i = 0; i < arraysize(global_cache); ++i) {
+        cache_char* cache = &global_cache[i];
+        cache_char temp_cache;
 
-        if (not_locked) {
+        if (!locked) {
           temp_cache = *cache;
-          if (temp_cache.cache.pinfo != cache->cache.pinfo) { /* check atomic */
+          if (temp_cache.cache.pinfo != cache->cache.pinfo) {  // check atomic
             temp_cache.cache.pinfo = NULL;
             temp_cache.c = '\0';
           }
           cache = &temp_cache;
         }
         if (global_change_detected) {
-          refresh_cache(cache, kp);
+          refresh_cache(cache, i == 0 ? key : key + strlen("persist."));
         }
 
         if (cache->c) {
           c = cache->c;
           break;
         }
-
-        kp = key + base_offset;
       }
       break;
   }
 
-  if (!not_locked) {
+  if (locked) {
     global_serial = current_global_serial;
     unlock();
   }
