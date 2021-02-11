@@ -367,27 +367,6 @@ pid_t LogKlog::sniffPid(const char*& buf, ssize_t len) {
     if (((ssize_t)strnlen(cp, len) == len) && cp[len]) {
         return 0;
     }
-    // HTC kernels with modified printk "c0   1648 "
-    if ((len > 9) && (cp[0] == 'c') && isdigit(cp[1]) &&
-        (isdigit(cp[2]) || (cp[2] == ' ')) && (cp[3] == ' ')) {
-        bool gotDigit = false;
-        int i;
-        for (i = 4; i < 9; ++i) {
-            if (isdigit(cp[i])) {
-                gotDigit = true;
-            } else if (gotDigit || (cp[i] != ' ')) {
-                break;
-            }
-        }
-        if ((i == 9) && (cp[i] == ' ')) {
-            int pid = 0;
-            char placeholder;
-            if (sscanf(cp + 4, "%d%c", &pid, &placeholder) == 2) {
-                buf = cp + 10;  // skip-it-all
-                return pid;
-            }
-        }
-    }
     while (len) {
         // Mediatek kernels with modified printk
         if (*cp == '[') {
