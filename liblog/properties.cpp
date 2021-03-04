@@ -111,7 +111,7 @@ static int __android_log_level(const char* tag, size_t tag_len) {
    * Where the missing tag matches all tags and becomes the
    * system global default. We do not support ro.log.tag* .
    */
-  static std::string last_tag;
+  static std::string* last_tag = new std::string;
   static uint32_t global_serial;
   uint32_t current_global_serial;
   static cache_char tag_cache[2];
@@ -149,13 +149,13 @@ static int __android_log_level(const char* tag, size_t tag_len) {
     bool local_change_detected = change_detected;
     if (locked) {
       // compare() rather than == because tag isn't guaranteed 0-terminated.
-      if (last_tag.compare(0, last_tag.size(), tag, tag_len) != 0) {
+      if (last_tag->compare(0, last_tag->size(), tag, tag_len) != 0) {
         // Invalidate log.tag.<tag> cache.
         for (size_t i = 0; i < arraysize(tag_cache); ++i) {
           tag_cache[i].cache.pinfo = NULL;
           tag_cache[i].c = '\0';
         }
-        last_tag.assign(tag, tag_len);
+        last_tag->assign(tag, tag_len);
         local_change_detected = true;
       }
     }
