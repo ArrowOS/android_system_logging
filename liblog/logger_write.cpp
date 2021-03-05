@@ -135,10 +135,10 @@ static const char* getprogname() {
 
 // It's possible for logging to happen during static initialization before our globals are
 // initialized, so we place this std::string in a function such that it is initialized on the first
-// call.
+// call. We use a pointer to avoid exit time destructors.
 std::string& GetDefaultTag() {
-  static std::string default_tag = getprogname();
-  return default_tag;
+  static std::string* default_tag = new std::string(getprogname());
+  return *default_tag;
 }
 
 void __android_log_set_default_tag(const char* tag) {
