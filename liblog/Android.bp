@@ -91,7 +91,10 @@ cc_library {
     vendor_ramdisk_available: true,
     recovery_available: true,
     native_bridge_supported: true,
-    llndk_stubs: "liblog.llndk",
+    llndk: {
+        symbol_file: "liblog.map.txt",
+        override_export_include_dirs: ["include_vndk"],
+    },
     srcs: liblog_sources,
 
     target: {
@@ -174,11 +177,4 @@ ndk_library {
     symbol_file: "liblog.map.txt",
     first_version: "9",
     unversioned_until: "current",
-}
-
-llndk_library {
-    name: "liblog.llndk",
-    native_bridge_supported: true,
-    symbol_file: "liblog.map.txt",
-    export_include_dirs: ["include_vndk"],
 }
