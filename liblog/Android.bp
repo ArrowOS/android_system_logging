@@ -178,3 +178,21 @@ ndk_library {
     first_version: "9",
     unversioned_until: "current",
 }
+
+rust_bindgen {
+    name: "liblog_event_list_bindgen",
+    wrapper_src: "rust/liblog_wrapper.h",
+    crate_name: "log_event_list_bindgen",
+    source_stem: "bindings",
+
+    bindgen_flags: [
+        "--size_t-is-usize",
+        "--allowlist-function=create_android_logger",
+        "--allowlist-function=android_log_destroy",
+        "--allowlist-function=android_log_write_int32",
+        "--allowlist-function=android_log_write_string8_len",
+        "--allowlist-function=android_log_write_list",
+        "--allowlist-function=__android_log_security",
+        "--allowlist-type=log_id",
+    ],
+}
