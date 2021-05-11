@@ -98,7 +98,7 @@ class Logcat {
     std::unique_ptr<std::regex> regex_;
     size_t max_count_ = 0;  // 0 means "infinite"
     size_t print_count_ = 0;
-    bool print_it_anyways_ = false;
+    bool print_it_anyway_ = false;
 
     // For PrintDividers()
     bool print_dividers_ = false;
@@ -215,7 +215,7 @@ void Logcat::ProcessBuffer(struct log_msg* buf) {
                      std::regex_search(entry.message, entry.message + entry.messageLen, *regex_);
 
         print_count_ += match;
-        if (match || print_it_anyways_) {
+        if (match || print_it_anyway_) {
             PrintDividers(buf->id(), print_dividers_);
 
             bytesWritten = android_log_printLogLine(logformat_.get(), output_fd_.get(), &entry);
@@ -632,7 +632,7 @@ int Logcat::Run(int argc, char** argv) {
                     break;
                 }
                 if (long_options[option_index].name == print_str) {
-                    print_it_anyways_ = true;
+                    print_it_anyway_ = true;
                     break;
                 }
                 if (long_options[option_index].name == debug_str) {
@@ -819,7 +819,7 @@ int Logcat::Run(int argc, char** argv) {
     if (max_count_ && got_t) {
         error(EXIT_FAILURE, 0, "Cannot use -m (--max-count) and -t together.");
     }
-    if (print_it_anyways_ && (!regex_ || !max_count_)) {
+    if (print_it_anyway_ && (!regex_ || !max_count_)) {
         // One day it would be nice if --print -v color and --regex <expr>
         // could play with each other and show regex highlighted content.
         fprintf(stderr,
@@ -827,7 +827,7 @@ int Logcat::Run(int argc, char** argv) {
                 "--print ignored, to be used in combination with\n"
                 "         "
                 "--regex <expr> and --max-count <N>\n");
-        print_it_anyways_ = false;
+        print_it_anyway_ = false;
     }
 
     // If no buffers are specified, default to using these buffers.
