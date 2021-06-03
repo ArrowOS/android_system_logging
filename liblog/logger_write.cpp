@@ -267,7 +267,7 @@ void __android_log_stderr_logger(const struct __android_log_message* log_message
             log_message->tag ? log_message->tag : "nullptr", priority_char, timestamp, getpid(),
             tid, log_message->file, log_message->line, log_message->message);
   } else {
-    fprintf(stderr, "%s %c %s %5d %5" PRIu64 " %s\n",
+    fprintf(stderr, "%s %c %s %5d %5" PRIu64 "] %s\n",
             log_message->tag ? log_message->tag : "nullptr", priority_char, timestamp, getpid(),
             tid, log_message->message);
   }
