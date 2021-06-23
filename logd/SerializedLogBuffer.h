@@ -36,6 +36,9 @@
 
 class SerializedLogBuffer final : public LogBuffer {
   public:
+    // Create SerializedLogChunk's with size = max_size_[log_id] / kChunkSizeDivisor.
+    static constexpr size_t kChunkSizeDivisor = 4;
+
     SerializedLogBuffer(LogReaderList* reader_list, LogTags* tags, LogStatistics* stats);
     void Init() override;
 
@@ -57,7 +60,8 @@ class SerializedLogBuffer final : public LogBuffer {
   private:
     bool ShouldLog(log_id_t log_id, const char* msg, uint16_t len);
     void MaybePrune(log_id_t log_id) REQUIRES(logd_lock);
-    void Prune(log_id_t log_id, size_t bytes_to_free, uid_t uid) REQUIRES(logd_lock);
+    void Prune(log_id_t log_id, size_t bytes_to_free) REQUIRES(logd_lock);
+    void UidClear(log_id_t log_id, uid_t uid) REQUIRES(logd_lock);
     void RemoveChunkFromStats(log_id_t log_id, SerializedLogChunk& chunk);
     size_t GetSizeUsed(log_id_t id) REQUIRES(logd_lock);
 
@@ -70,3 +74,7 @@ class SerializedLogBuffer final : public LogBuffer {
 
     std::atomic<uint64_t> sequence_ = 1;
 };
+
+// Exposed for testing.
+void ClearLogsByUid(std::list<SerializedLogChunk>& log_buffer, uid_t uid, size_t max_size,
+                    log_id_t log_id, LogStatistics* stats);

@@ -18,6 +18,7 @@
 
 #include <sys/types.h>
 
+#include <list>
 #include <vector>
 
 #include <android-base/logging.h>
@@ -31,20 +32,40 @@ class SerializedFlushToState;
 
 class SerializedLogChunk {
   public:
+    friend void VerifyChunks(const std::list<SerializedLogChunk>& expected,
+                             const std::list<SerializedLogChunk>& chunks);
+
+    class LogEntryIterator {
+      public:
+        LogEntryIterator(SerializedLogChunk& chunk, int read_offset_)
+            : chunk_(chunk), read_offset_(read_offset_) {}
+
+        LogEntryIterator& operator++() {
+            read_offset_ += chunk_.log_entry(read_offset_)->total_len();
+            return *this;
+        }
+
+        bool operator!=(const LogEntryIterator& other) const {
+            return read_offset_ != other.read_offset_;
+        }
+        const SerializedLogEntry& operator*() const { return *chunk_.log_entry(read_offset_); }
+
+      private:
+        SerializedLogChunk& chunk_;
+        int read_offset_;
+    };
+
     explicit SerializedLogChunk(size_t size) : contents_(size) {}
     SerializedLogChunk(SerializedLogChunk&& other) noexcept = default;
     ~SerializedLogChunk();
 
-    void Compress();
+    void FinishWriting();
     void IncReaderRefCount();
     void DecReaderRefCount();
     void AttachReader(SerializedFlushToState* reader);
     void DetachReader(SerializedFlushToState* reader);
 
     void NotifyReadersOfPrune(log_id_t log_id) REQUIRES(logd_lock);
-
-    // Must have no readers referencing this.  Return true if there are no logs left in this chunk.
-    bool ClearUidLogs(uid_t uid, log_id_t log_id, LogStatistics* stats);
 
     bool CanLog(size_t len);
     SerializedLogEntry* Log(uint64_t sequence, log_time realtime, uid_t uid, pid_t pid, pid_t tid,
@@ -57,14 +78,6 @@ class SerializedLogChunk {
         return sizeof(*this) + (compressed_log_.size() ?: contents_.size());
     }
 
-    void FinishWriting() {
-        writer_active_ = false;
-        Compress();
-        if (reader_ref_count_ == 0) {
-            contents_.Resize(0);
-        }
-    }
-
     const SerializedLogEntry* log_entry(int offset) const {
         CHECK(writer_active_ || reader_ref_count_ > 0);
         return reinterpret_cast<const SerializedLogEntry*>(data() + offset);
@@ -72,6 +85,10 @@ class SerializedLogChunk {
     const uint8_t* data() const { return contents_.data(); }
     int write_offset() const { return write_offset_; }
     uint64_t highest_sequence_number() const { return highest_sequence_number_; }
+
+    LogEntryIterator begin() { return LogEntryIterator(*this, 0); }
+
+    LogEntryIterator end() { return LogEntryIterator(*this, write_offset_); }
 
     // Exposed for testing
     uint32_t reader_ref_count() const { return reader_ref_count_; }
