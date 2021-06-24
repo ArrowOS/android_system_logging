@@ -153,6 +153,7 @@ cc_defaults {
         "ChattyLogBufferTest.cpp",
         "logd_test.cpp",
         "LogBufferTest.cpp",
+        "SerializedLogBufferTest.cpp",
         "SerializedLogChunkTest.cpp",
         "SerializedFlushToStateTest.cpp",
     ],
