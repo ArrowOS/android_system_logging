@@ -27,6 +27,70 @@
 #include "LogStatistics.h"
 #include "SerializedFlushToState.h"
 
+static SerializedLogEntry* LogToLogBuffer(std::list<SerializedLogChunk>& log_buffer,
+                                          size_t max_size, uint64_t sequence, log_time realtime,
+                                          uid_t uid, pid_t pid, pid_t tid, const char* msg,
+                                          uint16_t len) {
+    if (log_buffer.empty()) {
+        log_buffer.push_back(SerializedLogChunk(max_size / SerializedLogBuffer::kChunkSizeDivisor));
+    }
+
+    auto total_len = sizeof(SerializedLogEntry) + len;
+    if (!log_buffer.back().CanLog(total_len)) {
+        log_buffer.back().FinishWriting();
+        log_buffer.push_back(SerializedLogChunk(max_size / SerializedLogBuffer::kChunkSizeDivisor));
+    }
+
+    return log_buffer.back().Log(sequence, realtime, uid, pid, tid, msg, len);
+}
+
+// Clear all logs from a particular UID by iterating through all existing logs for a log_id, and
+// write all logs that don't match the UID into a new log buffer, then swapping the log buffers.
+// There is an optimization that chunks are copied as-is until a log message from the UID is found,
+// to ensure that back-to-back clears of the same UID do not require reflowing the entire buffer.
+void ClearLogsByUid(std::list<SerializedLogChunk>& log_buffer, uid_t uid, size_t max_size,
+                    log_id_t log_id, LogStatistics* stats) REQUIRES(logd_lock) {
+    bool contains_uid_logs = false;
+    std::list<SerializedLogChunk> new_logs;
+    auto it = log_buffer.begin();
+    while (it != log_buffer.end()) {
+        auto chunk = it++;
+        chunk->NotifyReadersOfPrune(log_id);
+        chunk->IncReaderRefCount();
+
+        if (!contains_uid_logs) {
+            for (const auto& entry : *chunk) {
+                if (entry.uid() == uid) {
+                    contains_uid_logs = true;
+                    break;
+                }
+            }
+            if (!contains_uid_logs) {
+                chunk->DecReaderRefCount();
+                new_logs.splice(new_logs.end(), log_buffer, chunk);
+                continue;
+            }
+            // We found a UID log, so push a writable chunk to prepare for the next loop.
+            new_logs.push_back(
+                    SerializedLogChunk(max_size / SerializedLogBuffer::kChunkSizeDivisor));
+        }
+
+        for (const auto& entry : *chunk) {
+            if (entry.uid() == uid) {
+                if (stats != nullptr) {
+                    stats->Subtract(entry.ToLogStatisticsElement(log_id));
+                }
+            } else {
+                LogToLogBuffer(new_logs, max_size, entry.sequence(), entry.realtime(), entry.uid(),
+                               entry.pid(), entry.tid(), entry.msg(), entry.msg_len());
+            }
+        }
+        chunk->DecReaderRefCount();
+        log_buffer.erase(chunk);
+    }
+    std::swap(new_logs, log_buffer);
+}
+
 SerializedLogBuffer::SerializedLogBuffer(LogReaderList* reader_list, LogTags* tags,
                                          LogStatistics* stats)
     : reader_list_(reader_list), tags_(tags), stats_(stats) {
@@ -87,18 +151,8 @@ int SerializedLogBuffer::Log(log_id_t log_id, log_time realtime, uid_t uid, pid_
     auto sequence = sequence_.fetch_add(1, std::memory_order_relaxed);
 
     auto lock = std::lock_guard{logd_lock};
-
-    if (logs_[log_id].empty()) {
-        logs_[log_id].push_back(SerializedLogChunk(max_size_[log_id] / 4));
-    }
-
-    auto total_len = sizeof(SerializedLogEntry) + len;
-    if (!logs_[log_id].back().CanLog(total_len)) {
-        logs_[log_id].back().FinishWriting();
-        logs_[log_id].push_back(SerializedLogChunk(max_size_[log_id] / 4));
-    }
-
-    auto entry = logs_[log_id].back().Log(sequence, realtime, uid, pid, tid, msg, len);
+    auto entry = LogToLogBuffer(logs_[log_id], max_size_[log_id], sequence, realtime, uid, pid, tid,
+                                msg, len);
     stats_->Add(entry->ToLogStatisticsElement(log_id));
 
     MaybePrune(log_id);
@@ -111,7 +165,7 @@ void SerializedLogBuffer::MaybePrune(log_id_t log_id) {
     size_t total_size = GetSizeUsed(log_id);
     size_t after_size = total_size;
     if (total_size > max_size_[log_id]) {
-        Prune(log_id, total_size - max_size_[log_id], 0);
+        Prune(log_id, total_size - max_size_[log_id]);
         after_size = GetSizeUsed(log_id);
         LOG(VERBOSE) << "Pruned Logs from log_id: " << log_id << ", previous size: " << total_size
                      << " after size: " << after_size;
@@ -122,16 +176,13 @@ void SerializedLogBuffer::MaybePrune(log_id_t log_id) {
 
 void SerializedLogBuffer::RemoveChunkFromStats(log_id_t log_id, SerializedLogChunk& chunk) {
     chunk.IncReaderRefCount();
-    int read_offset = 0;
-    while (read_offset < chunk.write_offset()) {
-        auto* entry = chunk.log_entry(read_offset);
-        stats_->Subtract(entry->ToLogStatisticsElement(log_id));
-        read_offset += entry->total_len();
+    for (const auto& entry : chunk) {
+        stats_->Subtract(entry.ToLogStatisticsElement(log_id));
     }
     chunk.DecReaderRefCount();
 }
 
-void SerializedLogBuffer::Prune(log_id_t log_id, size_t bytes_to_free, uid_t uid) {
+void SerializedLogBuffer::Prune(log_id_t log_id, size_t bytes_to_free) {
     auto& log_buffer = logs_[log_id];
     auto it = log_buffer.begin();
     while (it != log_buffer.end()) {
@@ -168,22 +219,28 @@ void SerializedLogBuffer::Prune(log_id_t log_id, size_t bytes_to_free, uid_t uid
         // Notify them to delete the reference.
         it_to_prune->NotifyReadersOfPrune(log_id);
 
-        if (uid != 0) {
-            // Reorder the log buffer to remove logs from the given UID.  If there are no logs left
-            // in the buffer after the removal, delete it.
-            if (it_to_prune->ClearUidLogs(uid, log_id, stats_)) {
-                log_buffer.erase(it_to_prune);
-            }
-        } else {
-            size_t buffer_size = it_to_prune->PruneSize();
-            RemoveChunkFromStats(log_id, *it_to_prune);
-            log_buffer.erase(it_to_prune);
-            if (buffer_size >= bytes_to_free) {
-                return;
-            }
-            bytes_to_free -= buffer_size;
+        size_t buffer_size = it_to_prune->PruneSize();
+        RemoveChunkFromStats(log_id, *it_to_prune);
+        log_buffer.erase(it_to_prune);
+        if (buffer_size >= bytes_to_free) {
+            return;
+        }
+        bytes_to_free -= buffer_size;
+    }
+}
+
+void SerializedLogBuffer::UidClear(log_id_t log_id, uid_t uid) {
+    // Wake all readers; see comment in Prune().
+    for (const auto& reader_thread : reader_list_->reader_threads()) {
+        if (!reader_thread->IsWatching(log_id)) {
+            continue;
+        }
+
+        if (reader_thread->deadline().time_since_epoch().count() != 0) {
+            reader_thread->TriggerReader();
         }
     }
+    ClearLogsByUid(logs_[log_id], uid, max_size_[log_id], log_id, stats_);
 }
 
 std::unique_ptr<FlushToState> SerializedLogBuffer::CreateFlushToState(uint64_t start,
@@ -243,7 +300,11 @@ bool SerializedLogBuffer::FlushTo(
 
 bool SerializedLogBuffer::Clear(log_id_t id, uid_t uid) {
     auto lock = std::lock_guard{logd_lock};
-    Prune(id, ULONG_MAX, uid);
+    if (uid == 0) {
+        Prune(id, ULONG_MAX);
+    } else {
+        UidClear(id, uid);
+    }
 
     // Clearing SerializedLogBuffer never waits for readers and therefore is always successful.
     return true;
