@@ -28,7 +28,6 @@ cc_defaults {
 cc_library {
     name: "liblogwrap",
     defaults: ["logwrapper_defaults"],
-    ramdisk_available: true,
     recovery_available: true,
     srcs: ["logwrap.cpp"],
     shared_libs: [
