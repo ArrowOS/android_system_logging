@@ -102,7 +102,7 @@ TEST(SerializedLogChunk, three_logs) {
             "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF"                  // Timestamp
             "\x0C\x00last message";                             // msg_len + message
 
-    for (size_t i = 0; i < sizeof(expected_buffer_data); ++i) {
+    for (size_t i = 0; i < sizeof(expected_buffer_data) - 1; ++i) {
         EXPECT_EQ(static_cast<uint8_t>(expected_buffer_data[i]), chunk.data()[i])
                 << "position: " << i;
     }
