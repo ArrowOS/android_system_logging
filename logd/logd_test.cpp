@@ -856,9 +856,9 @@ TEST(logd, no_epipe) {
 
         std::string message = "getStatistics 0 1 2 3 4 5 6 7";
 
-        ASSERT_GT(write(sock1, message.c_str(), message.length()), 0);
+        ASSERT_GT(write(sock1, message.c_str(), message.length() + 1), 0);
         sock1.reset();
-        ASSERT_GT(write(sock2, message.c_str(), message.length()), 0);
+        ASSERT_GT(write(sock2, message.c_str(), message.length() + 1), 0);
 
         struct pollfd p = {.fd = sock2, .events = POLLIN, .revents = 0};
 
