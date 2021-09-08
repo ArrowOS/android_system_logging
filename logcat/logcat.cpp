@@ -898,13 +898,13 @@ int Logcat::Run(int argc, char** argv) {
     }
 
     if (mode & ANDROID_LOG_PSTORE) {
-        if (output_file_name_) {
-            error(EXIT_FAILURE, 0, "-c is ambiguous with both -f and -L specified.");
-        }
         if (setLogSize || getLogSize || printStatistics || getPruneList || setPruneList) {
             error(EXIT_FAILURE, 0, "-L is incompatible with -g/-G, -S, and -p/-P.");
         }
         if (clearLog) {
+            if (output_file_name_) {
+                error(EXIT_FAILURE, 0, "-c is ambiguous with both -f and -L specified.");
+            }
             unlink("/sys/fs/pstore/pmsg-ramoops-0");
             return EXIT_SUCCESS;
         }
