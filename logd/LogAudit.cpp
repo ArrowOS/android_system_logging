@@ -28,11 +28,11 @@
 #include <sys/uio.h>
 #include <syslog.h>
 
-#include <fstream>
-#include <sstream>
-
+#include <android-base/file.h>
+#include <android-base/logging.h>
 #include <android-base/macros.h>
 #include <android-base/properties.h>
+#include <android-base/strings.h>
 #include <private/android_filesystem_config.h>
 #include <private/android_logger.h>
 
@@ -113,17 +113,46 @@ static inline bool hasMetadata(char* str, int str_len) {
 
 static auto populateDenialMap() {
     std::map<std::tuple<std::string, std::string, std::string>, std::string> denial_to_bug;
-    std::ifstream bug_file("/vendor/etc/selinux/selinux_denial_metadata");
-    std::string line;
-    if (bug_file.good()) {
-        std::string scontext;
-        std::string tcontext;
-        std::string tclass;
-        std::string bug_num;
-        while (std::getline(bug_file, line)) {
-            std::stringstream split_line(line);
-            split_line >> scontext >> tcontext >> tclass >> bug_num;
-            denial_to_bug.try_emplace({scontext, tcontext, tclass}, bug_num);
+    // Order matters. Only the first occurrence of a
+    // (scontext, tcontext, tclass) combination is recorded.
+    for (const auto& bug_map_file :
+         {"/system_ext/etc/selinux/bug_map"s, "/vendor/etc/selinux/selinux_denial_metadata"s,
+          "/system/etc/selinux/bug_map"s}) {
+        std::string file_contents;
+        if (!android::base::ReadFileToString(bug_map_file, &file_contents)) {
+            continue;
+        }
+        int errors = 0;
+        for (const auto& line : android::base::Split(file_contents, "\n")) {
+            const auto fields = android::base::Tokenize(line, " ");
+            if (fields.empty() || android::base::StartsWith(fields.front(), '#')) {
+                continue;
+            }
+            if (fields.size() == 4) {
+                const std::string& scontext = fields[0];
+                const std::string& tcontext = fields[1];
+                const std::string& tclass = fields[2];
+                const std::string& bug_num = fields[3];
+                const auto [it, success] =
+                        denial_to_bug.try_emplace({scontext, tcontext, tclass}, bug_num);
+                if (!success) {
+                    const auto& [key, value] = *it;
+                    LOG(WARNING) << "Ignored bug_map definition in " << bug_map_file << ": '"
+                                 << line
+                                 << "', (scontext, tcontext, tclass) denial combination is already "
+                                    "tagged with bug metadata '"
+                                 << value << "'";
+                }
+            } else {
+                LOG(ERROR) << "Ignored ill-formed bug_map definition in " << bug_map_file << ": '"
+                           << line << "'";
+                ++errors;
+            }
+        }
+        if (errors) {
+            LOG(ERROR) << "Loaded bug_map file with " << errors << " errors: " << bug_map_file;
+        } else {
+            LOG(INFO) << "Loaded bug_map file: " << bug_map_file;
         }
     }
     return denial_to_bug;
