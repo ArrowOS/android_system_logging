@@ -111,12 +111,10 @@ static inline bool hasMetadata(char* str, int str_len) {
            (str[str_len - 9] == '/' || str[str_len - 39] == '/');
 }
 
-std::map<std::string, std::string> LogAudit::populateDenialMap() {
+static auto populateDenialMap() {
+    std::map<std::tuple<std::string, std::string, std::string>, std::string> denial_to_bug;
     std::ifstream bug_file("/vendor/etc/selinux/selinux_denial_metadata");
     std::string line;
-    // allocate a map for the static map pointer in auditParse to keep track of,
-    // this function only runs once
-    std::map<std::string, std::string> denial_to_bug;
     if (bug_file.good()) {
         std::string scontext;
         std::string tcontext;
@@ -125,7 +123,7 @@ std::map<std::string, std::string> LogAudit::populateDenialMap() {
         while (std::getline(bug_file, line)) {
             std::stringstream split_line(line);
             split_line >> scontext >> tcontext >> tclass >> bug_num;
-            denial_to_bug.emplace(scontext + tcontext + tclass, bug_num);
+            denial_to_bug.try_emplace({scontext, tcontext, tclass}, bug_num);
         }
     }
     return denial_to_bug;
@@ -143,8 +141,9 @@ std::string LogAudit::denialParse(const std::string& denial, char terminator,
 }
 
 std::string LogAudit::auditParse(const std::string& string, uid_t uid) {
-    static std::map<std::string, std::string> denial_to_bug =
-        populateDenialMap();
+    // Allocate a static map object to memoize the loaded bug_map files.
+    static auto denial_to_bug = populateDenialMap();
+
     std::string result;
     std::string scontext = denialParse(string, ':', "scontext=u:object_r:");
     std::string tcontext = denialParse(string, ':', "tcontext=u:object_r:");
@@ -155,7 +154,7 @@ std::string LogAudit::auditParse(const std::string& string, uid_t uid) {
     if (tcontext.empty()) {
         tcontext = denialParse(string, ':', "tcontext=u:r:");
     }
-    auto search = denial_to_bug.find(scontext + tcontext + tclass);
+    auto search = denial_to_bug.find({scontext, tcontext, tclass});
     if (search != denial_to_bug.end()) {
         result = " bug=" + search->second;
     }
