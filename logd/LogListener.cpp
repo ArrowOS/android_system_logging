@@ -62,15 +62,14 @@ void LogListener::HandleData() {
         nullptr, 0, &iov, 1, control, sizeof(control), 0,
     };
 
-    // To clear the entire buffer is secure/safe, but this contributes to 1.68%
-    // overhead under logging load. We are safe because we check counts, but
-    // still need to clear null terminator
-    // memset(buffer, 0, sizeof(buffer));
     ssize_t n = recvmsg(socket_, &hdr, 0);
     if (n <= (ssize_t)(sizeof(android_log_header_t))) {
         return;
     }
 
+    // To clear the entire buffer would be safe, but this contributes to 1.68%
+    // overhead under logging load. We are safe because we check counts, but
+    // still need to clear null terminator
     buffer[n] = 0;
 
     struct ucred* cred = nullptr;
