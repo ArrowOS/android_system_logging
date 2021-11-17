@@ -386,11 +386,11 @@ static void bswrite_test(const char* message) {
         if (pid > 999999) ++line_overhead;
         fflush(stderr);
         if (processBinaryLogBuffer) {
-          EXPECT_GT((int)((line_overhead * num_lines) + size),
-                    android_log_printLogLine(logformat, fileno(stderr), &entry));
+          EXPECT_GT((line_overhead * num_lines) + size,
+                    android_log_printLogLine(logformat, stderr, &entry));
         } else {
-          EXPECT_EQ((int)((line_overhead * num_lines) + size),
-                    android_log_printLogLine(logformat, fileno(stderr), &entry));
+          EXPECT_EQ((line_overhead * num_lines) + size,
+                    android_log_printLogLine(logformat, stderr, &entry));
         }
       }
       android_log_format_free(logformat);
@@ -468,8 +468,8 @@ static void buf_write_test(const char* message) {
       if (pid > 99999) ++line_overhead;
       if (pid > 999999) ++line_overhead;
       fflush(stderr);
-      EXPECT_EQ((int)(((line_overhead + sizeof(tag)) * num_lines) + size),
-                android_log_printLogLine(logformat, fileno(stderr), &entry));
+      EXPECT_EQ(((line_overhead + sizeof(tag)) * num_lines) + size,
+                android_log_printLogLine(logformat, stderr, &entry));
     }
     android_log_format_free(logformat);
   };
@@ -1006,8 +1006,7 @@ TEST(liblog, __android_log_buf_print__maxtag) {
     EXPECT_EQ(0, processLogBuffer);
     if (processLogBuffer == 0) {
       fflush(stderr);
-      int printLogLine =
-          android_log_printLogLine(logformat, fileno(stderr), &entry);
+      int printLogLine = android_log_printLogLine(logformat, stderr, &entry);
       // Legacy tag truncation
       EXPECT_LE(128, printLogLine);
       // Measured maximum if we try to print part of the tag as message
@@ -2493,8 +2492,7 @@ static void create_android_logger(const char* (*fn)(uint32_t tag,
       if (pid > 99999) ++line_overhead;
       if (pid > 999999) ++line_overhead;
       print_barrier();
-      int printLogLine =
-          android_log_printLogLine(logformat, fileno(stderr), &entry);
+      int printLogLine = android_log_printLogLine(logformat, stderr, &entry);
       print_barrier();
       EXPECT_EQ(line_overhead + (int)strlen(expected_string), printLogLine);
     }
