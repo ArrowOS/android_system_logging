@@ -234,10 +234,9 @@ void timeout_negative(const char* command) {
                 socket_local_client("logdr", ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_SEQPACKET));
         ASSERT_LT(0, fd) << "Failed to open logdr: " << strerror(errno);
 
-        struct sigaction ignore, old_sigaction;
-        memset(&ignore, 0, sizeof(ignore));
-        ignore.sa_handler = caught_signal;
+        struct sigaction ignore = {.sa_handler = caught_signal};
         sigemptyset(&ignore.sa_mask);
+        struct sigaction old_sigaction;
         sigaction(SIGALRM, &ignore, &old_sigaction);
         unsigned int old_alarm = alarm(3);
 
@@ -340,10 +339,9 @@ TEST(logd, timeout) {
             ".%09" PRIu32,
             start.tv_sec, start.tv_nsec);
 
-        struct sigaction ignore, old_sigaction;
-        memset(&ignore, 0, sizeof(ignore));
-        ignore.sa_handler = caught_signal;
+        struct sigaction ignore = {.sa_handler = caught_signal};
         sigemptyset(&ignore.sa_mask);
+        struct sigaction old_sigaction;
         sigaction(SIGALRM, &ignore, &old_sigaction);
         unsigned int old_alarm = alarm(3);
 
@@ -444,10 +442,9 @@ TEST(logd, SNDTIMEO) {
     unique_fd fd(socket_local_client("logdr", ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_SEQPACKET));
     ASSERT_LT(0, fd) << "Failed to open logdr: " << strerror(errno);
 
-    struct sigaction ignore, old_sigaction;
-    memset(&ignore, 0, sizeof(ignore));
-    ignore.sa_handler = caught_signal;
+    struct sigaction ignore = {.sa_handler = caught_signal};
     sigemptyset(&ignore.sa_mask);
+    struct sigaction old_sigaction;
     sigaction(SIGALRM, &ignore, &old_sigaction);
     unsigned int old_alarm = alarm(alarm_time);
 
