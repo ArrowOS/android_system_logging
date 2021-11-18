@@ -162,17 +162,13 @@ static int issueReinit() {
     ssize_t ret = TEMP_FAILURE_RETRY(write(sock, reinitStr, sizeof(reinitStr)));
     if (ret < 0) return -errno;
 
-    struct pollfd p;
-    memset(&p, 0, sizeof(p));
-    p.fd = sock;
-    p.events = POLLIN;
+    struct pollfd p = {.fd = sock, .events = POLLIN};
     ret = TEMP_FAILURE_RETRY(poll(&p, 1, 1000));
     if (ret < 0) return -errno;
     if ((ret == 0) || !(p.revents & POLLIN)) return -ETIME;
 
     static const char success[] = "success";
-    char buffer[sizeof(success) - 1];
-    memset(buffer, 0, sizeof(buffer));
+    char buffer[sizeof(success) - 1] = {};
     ret = TEMP_FAILURE_RETRY(read(sock, buffer, sizeof(buffer)));
     if (ret < 0) return -errno;
 
