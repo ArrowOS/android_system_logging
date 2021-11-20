@@ -172,3 +172,7 @@ bool clientHasLogCredentials(SocketClient* cli) {
 
     return false;
 }
+
+bool clientIsExemptedFromUserConsent(SocketClient* cli) {
+    return UserIsPrivileged(cli->getUid()) || UserIsPrivileged(cli->getGid());
+}
