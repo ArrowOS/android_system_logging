@@ -64,6 +64,7 @@ using android::base::ParseByteCount;
 using android::base::ParseUint;
 using android::base::Split;
 using android::base::StringPrintf;
+using android::base::WaitForProperty;
 using android::base::WriteFully;
 
 class Logcat {
@@ -1076,6 +1077,10 @@ int Logcat::Run(int argc, char** argv) {
     if (getLogSize || setLogSize || clearLog) return EXIT_SUCCESS;
 
     SetupOutputAndSchedulingPolicy(!(mode & ANDROID_LOG_NONBLOCK));
+
+    if (!WaitForProperty("logd.ready", "true", std::chrono::seconds(1))) {
+        error(EXIT_FAILURE, 0, "Failed to wait for logd.ready to become true. logd not running?");
+    }
 
     while (!max_count_ || print_count_ < max_count_) {
         struct log_msg log_msg;
