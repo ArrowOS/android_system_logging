@@ -96,6 +96,7 @@ cc_binary {
         "LogListener.cpp",
         "LogPermissions.cpp",
         "LogReader.cpp",
+        "TrustyLog.cpp",
         "PkgIds.cpp",
         ":ILogcatManagerService_aidl"
     ],
