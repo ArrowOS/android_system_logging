@@ -278,6 +278,9 @@ int main(int argc, char* argv[]) {
         return EXIT_FAILURE;
     }
 
+    // Notify that others can now interact with logd
+    SetProperty("logd.ready", "true");
+
     // LogAudit listens on NETLINK_AUDIT socket for selinux
     // initiated log messages. New log entries are added to LogBuffer
     // and LogReader is notified to send updates to connected clients.
