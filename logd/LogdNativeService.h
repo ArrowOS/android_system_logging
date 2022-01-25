@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 The Android Open Source Project
+ * Copyright (C) 2022 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,10 +16,16 @@
 
 #pragma once
 
-#include <sys/types.h>
+#include "LogReaderList.h"
+#include "android/os/BnLogd.h"
 
-#include <sysutils/SocketClient.h>
+class LogdNativeService : public android::os::BnLogd {
+  public:
+    LogdNativeService(LogReaderList* reader_list);
 
-bool clientHasLogCredentials(uid_t uid, gid_t gid, pid_t pid);
-bool clientHasLogCredentials(SocketClient* cli);
-bool clientIsExemptedFromUserConsent(SocketClient* cli);
+    android::binder::Status approve(int32_t, int32_t, int32_t, int32_t);
+    android::binder::Status decline(int32_t, int32_t, int32_t, int32_t);
+
+  private:
+    LogReaderList* reader_list_;
+};
