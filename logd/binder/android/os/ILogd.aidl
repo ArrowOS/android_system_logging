@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012-2014 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-#pragma once
+package android.os;
 
-#include <sys/types.h>
-
-#include <sysutils/SocketClient.h>
-
-bool clientHasLogCredentials(uid_t uid, gid_t gid, pid_t pid);
-bool clientHasLogCredentials(SocketClient* cli);
-bool clientIsExemptedFromUserConsent(SocketClient* cli);
+/** {@hide} */
+interface ILogd {
+    void approve(in int uid, in int gid, in int pid, in int fd);
+    void decline(in int uid, in int gid, in int pid, in int fd);
+}
