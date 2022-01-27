@@ -11,6 +11,7 @@ rust_library {
         "libenv_logger",
         "liblog_rust",
     ],
+    vendor_available: true,
     target: {
         android: {
             rustlibs: [
