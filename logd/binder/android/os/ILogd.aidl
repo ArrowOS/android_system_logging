@@ -17,7 +17,26 @@
 package android.os;
 
 /** {@hide} */
-interface ILogd {
+oneway interface ILogd {
+    /**
+     * The function is called by LogcatManagerService on system_server
+     * to approve the privileged log data access request.
+     *
+     * @param uid The UID of client who makes the request.
+     * @param gid The GID of client who makes the request.
+     * @param pid The PID of client who makes the request.
+     * @param fd  The FD (Socket) of client who makes the request.
+     */
     void approve(in int uid, in int gid, in int pid, in int fd);
+
+    /**
+     * The function is called by LogcatManagerService on system_server
+     * to decline the privileged log data access request.
+     *
+     * @param uid The UID of client who makes the request.
+     * @param gid The GID of client who makes the request.
+     * @param pid The PID of client who makes the request.
+     * @param fd  The FD (Socket) of client who makes the request.
+     */
     void decline(in int uid, in int gid, in int pid, in int fd);
 }
