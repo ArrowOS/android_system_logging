@@ -60,6 +60,7 @@
 #include "LogUtils.h"
 #include "SerializedLogBuffer.h"
 #include "SimpleLogBuffer.h"
+#include "TrustyLog.h"
 
 using android::base::GetBoolProperty;
 using android::base::GetProperty;
@@ -305,6 +306,8 @@ int main(int argc, char* argv[]) {
     if (al && al->startListener()) {
         delete al;
     }
+
+    TrustyLog::create(log_buffer);
 
     TEMP_FAILURE_RETRY(pause());
 
