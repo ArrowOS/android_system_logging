@@ -93,6 +93,7 @@ cc_binary {
         "LogReader.cpp",
         "LogAudit.cpp",
         "LogKlog.cpp",
+        "TrustyLog.cpp",
         "libaudit.cpp",
         "PkgIds.cpp",
     ],
