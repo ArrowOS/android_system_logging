@@ -1313,6 +1313,7 @@ static void convertMonotonic(struct timespec* result, const AndroidLogEntry* ent
           suspended_pending = false;
         }
       }
+      free(line);
       pclose(p);
     }
     /* last entry is our current time conversion */
