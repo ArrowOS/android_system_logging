@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #define TRUSTY_LINE_BUFFER_SIZE 256
 static const char trustyprefix[] = "trusty";
@@ -28,6 +29,11 @@ static const char trustyprefix[] = "trusty";
 TrustyLog::TrustyLog(LogBuffer* buf, int fdRead) : SocketListener(fdRead, false), logbuf(buf) {}
 
 void TrustyLog::create(LogBuffer* buf) {
+    if (access("/sys/module/trusty_log/parameters/log_size", F_OK)) {
+        /* this device has the old driver which doesn't support poll() */
+        return;
+    }
+
     int fd = TEMP_FAILURE_RETRY(open("/dev/trusty-log0", O_RDONLY | O_NDELAY | O_CLOEXEC));
     if (fd >= 0) {
         TrustyLog* tl = new TrustyLog(buf, fd);
