@@ -174,5 +174,5 @@ bool clientHasLogCredentials(SocketClient* cli) {
 }
 
 bool clientIsExemptedFromUserConsent(SocketClient* cli) {
-    return UserIsPrivileged(cli->getUid()) || UserIsPrivileged(cli->getGid());
+    return cli->getUid() < AID_APP_START;
 }

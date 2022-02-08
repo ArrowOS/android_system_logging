@@ -251,8 +251,16 @@ bool LogReader::onDataAvailable(SocketClient* cli) {
                                          cli->getSocket());
 
     bool only_read_event_logs = (logMask ^ (1 << LOG_ID_EVENTS)) == 0;
-    if (clientHasLogCredentials(cli) && !clientIsExemptedFromUserConsent(cli) &&
-        !only_read_event_logs) {
+
+    // The logd access will be granted when any of the following three
+    // conditions is satisfied:
+    // 1. the client (native processes) is exempted from user consent check.
+    // 2. the client doesn't have log credentials and so can only access its own log data anyway
+    // 3. the client (for EventLog API) only wants to access the event log.
+    if (clientIsExemptedFromUserConsent(cli) || !clientHasLogCredentials(cli) ||
+        only_read_event_logs) {
+        reader_list_->AddAndRunThread(std::move(entry));
+    } else {
         if (GetLogdBinderServiceStatus(reader_list_)) {
             reader_list_->AddPendingThread(std::move(entry));
         } else {
@@ -261,8 +269,6 @@ bool LogReader::onDataAvailable(SocketClient* cli) {
             entry->Revoke();
             reader_list_->AddAndRunThread(std::move(entry));
         }
-    } else {
-        reader_list_->AddAndRunThread(std::move(entry));
     }
 
     // Set acceptable upper limit to wait for slow reader processing b/27242723
