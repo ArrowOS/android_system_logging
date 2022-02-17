@@ -92,8 +92,17 @@ void LogReaderList::RemoveRunningThread(LogReaderThread* thread) {
     if (iter == running_reader_threads_.end()) {
         return;
     }
+
+    // If the track_flag is false, we don't need to notify LogcatManagerService.
+    // All the native processes are in this category, so we can remove the
+    // dependency on system_server for the native processes.
+    if (!thread->track_flag()) {
+        running_reader_threads_.erase(iter);
+        return;
+    }
+
     auto service = GetLogcatService();
-    if (thread->track_flag() && service != nullptr) {
+    if (service != nullptr) {
         const PendingReaderThreadKey key = thread->pending_reader_thread_key();
         service->finishThread(key.uid, key.gid, key.pid, key.fd);
     }
