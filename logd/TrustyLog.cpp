@@ -43,9 +43,35 @@ void TrustyLog::create(LogBuffer* buf) {
     }
 }
 
+/*
+ * Log a message, breaking it into smaller chunks if needed
+ */
+void TrustyLog::LogMsg(const char* msg, size_t len) {
+    char linebuffer[TRUSTY_LINE_BUFFER_SIZE + sizeof(trustyprefix) + 1];
+
+    while (len) {
+        size_t sublen = len;
+        if (sublen > TRUSTY_LINE_BUFFER_SIZE) {
+            sublen = TRUSTY_LINE_BUFFER_SIZE;
+        }
+
+        *linebuffer = ANDROID_LOG_INFO;
+        strcpy(linebuffer + 1, trustyprefix);
+        strncpy(linebuffer + 1 + sizeof(trustyprefix), msg, sublen);
+        timespec tp;
+        clock_gettime(CLOCK_REALTIME, &tp);
+        log_time now = log_time(tp.tv_sec, tp.tv_nsec);
+        // The Log() API appears to want a length that is 1 greater than what's
+        // actually being logged.
+        logbuf->Log(LOG_ID_KERNEL, now, AID_ROOT, 0 /*pid*/, 0 /*tid*/, linebuffer,
+                    sizeof(trustyprefix) + sublen + 2);
+        msg += sublen;
+        len -= sublen;
+    }
+}
+
 bool TrustyLog::onDataAvailable(SocketClient* cli) {
     char buffer[4096];
-    char linebuffer[TRUSTY_LINE_BUFFER_SIZE + sizeof(trustyprefix) + 1];
     ssize_t len = 0;
     for (;;) {
         ssize_t retval = 0;
@@ -66,17 +92,16 @@ bool TrustyLog::onDataAvailable(SocketClient* cli) {
         for (;;) {
             char* lineend = static_cast<char*>(memchr(linestart, '\n', len));
             if (lineend) {
-                size_t linelen = lineend - linestart + 1;
-                *linebuffer = ANDROID_LOG_INFO;
-                strcpy(linebuffer + 1, trustyprefix);
-                strncpy(linebuffer + 1 + sizeof(trustyprefix), linestart, linelen - 1);
-                timespec tp;
-                clock_gettime(CLOCK_REALTIME, &tp);
-                log_time now = log_time(tp.tv_sec, tp.tv_nsec);
-                logbuf->Log(LOG_ID_KERNEL, now, AID_ROOT, 0 /*pid*/, 0 /*tid*/, linebuffer,
-                            sizeof(trustyprefix) + linelen + 1);
-                linestart += linelen;
-                len -= linelen;
+                // print one newline-terminated line
+                size_t linelen = lineend - linestart;
+                LogMsg(linestart, linelen);
+                linestart += (linelen + 1);  // next line, skipping the newline
+                len -= (linelen + 1);
+            } else if (len >= TRUSTY_LINE_BUFFER_SIZE) {
+                // there was no newline, but there's enough data to print
+                LogMsg(linestart, TRUSTY_LINE_BUFFER_SIZE);
+                linestart += TRUSTY_LINE_BUFFER_SIZE;
+                len -= TRUSTY_LINE_BUFFER_SIZE;
             } else {
                 if (len) {
                     // there's some unterminated data left at the end of the
