@@ -28,6 +28,7 @@
  */
 class TrustyLog : public SocketListener {
     LogBuffer* logbuf;
+    void LogMsg(const char* msg, size_t len);
 
   public:
     static void create(LogBuffer* buf);
