@@ -1102,7 +1102,7 @@ size_t convertPrintable(char* p, const char* message, size_t messageLen) {
     }
     len = mbrtowc(nullptr, message, len, &mb_state);
 
-    if (len < 0) {
+    if (len <= 0) {
       snprintf(buf, sizeof(buf), "\\x%02X", static_cast<unsigned char>(*message));
       len = 1;
     } else {
