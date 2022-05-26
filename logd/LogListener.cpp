@@ -103,10 +103,13 @@ void LogListener::HandleData() {
         return;
     }
 
-    if ((logId == LOG_ID_SECURITY) &&
-        (!__android_log_security() ||
-         !clientHasLogCredentials(cred->uid, cred->gid, cred->pid))) {
-        return;
+    if (logId == LOG_ID_SECURITY) {
+        if (!__android_log_security()) {
+            return;
+        }
+        if (!clientCanWriteSecurityLog(cred->uid, cred->gid, cred->pid)) {
+            return;
+        }
     }
 
     char* msg = ((char*)buffer) + sizeof(android_log_header_t);
