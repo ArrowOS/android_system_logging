@@ -307,6 +307,8 @@ int main(int argc, char* argv[]) {
         delete al;
     }
 
+    TrustyLog::create(log_buffer);
+
     TEMP_FAILURE_RETRY(pause());
 
     return EXIT_SUCCESS;
