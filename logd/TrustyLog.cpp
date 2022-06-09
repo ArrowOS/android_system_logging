@@ -73,6 +73,7 @@ void TrustyLog::LogMsg(const char* msg, size_t len) {
 bool TrustyLog::onDataAvailable(SocketClient* cli) {
     char buffer[4096];
     ssize_t len = 0;
+    bool need_newline = false;
     for (;;) {
         ssize_t retval = 0;
         if (len < (ssize_t)(sizeof(buffer) - 1)) {
@@ -104,10 +105,17 @@ bool TrustyLog::onDataAvailable(SocketClient* cli) {
                 len -= TRUSTY_LINE_BUFFER_SIZE;
             } else {
                 if (len) {
+                    if (need_newline) {
+                        // still no newline after reading more, log what we have
+                        // and return
+                        LogMsg(linestart, len);
+                        return true;
+                    }
                     // there's some unterminated data left at the end of the
                     // buffer. Move it to the front and try to append more in
                     // the outer loop.
                     memmove(buffer, linestart, len);
+                    need_newline = true;
                 }
                 break;
             }
